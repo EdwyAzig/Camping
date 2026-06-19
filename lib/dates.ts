@@ -1,5 +1,7 @@
-const IT_DAYS = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"] as const;
-const IT_MONTHS = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"] as const;
+import type { Locale } from "@/lib/i18n/config";
+import { localeToIntl } from "@/lib/i18n/config";
+import { getMessages } from "@/lib/i18n/messages";
+import { createTranslator } from "@/lib/i18n/translate";
 
 function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -22,32 +24,57 @@ export function addDays(iso: string, days: number): string {
   return toISODate(d);
 }
 
-export function dayLabelFromDate(iso: string): string {
-  return capitalize(IT_DAYS[parseISODate(iso).getDay()]);
-}
-
-export function formatItalianDate(iso: string): string {
+export function dayLabelFromDate(iso: string, locale: Locale = "it"): string {
   const d = parseISODate(iso);
-  return `${capitalize(IT_DAYS[d.getDay()])} ${d.getDate()} ${IT_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  return capitalize(
+    new Intl.DateTimeFormat(localeToIntl(locale), { weekday: "long" }).format(d)
+  );
 }
 
+export function formatDateShort(iso: string, locale: Locale = "it"): string {
+  const d = parseISODate(iso);
+  return new Intl.DateTimeFormat(localeToIntl(locale), {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(d);
+}
+
+export function formatDateLong(iso: string, locale: Locale = "it"): string {
+  const d = parseISODate(iso);
+  return new Intl.DateTimeFormat(localeToIntl(locale), {
+    weekday: "long",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(d);
+}
+
+/** @deprecated Use formatDateShort(iso, locale) */
 export function formatItalianDateShort(iso: string): string {
-  const d = parseISODate(iso);
-  const shortDay = capitalize(IT_DAYS[d.getDay()].slice(0, 3));
-  return `${shortDay} ${d.getDate()} ${IT_MONTHS[d.getMonth()]}`;
+  return formatDateShort(iso, "it");
 }
 
-export function formatDateRange(start: string | null, end: string | null): string {
+/** @deprecated Use formatDateLong(iso, locale) */
+export function formatItalianDate(iso: string): string {
+  return formatDateLong(iso, "it");
+}
+
+export function formatDateRange(
+  start: string | null,
+  end: string | null,
+  locale: Locale = "it"
+): string {
+  const t = createTranslator(getMessages(locale));
   if (!start && !end) return "";
   if (start && end && start !== end) {
-    return `${formatItalianDateShort(start)} → ${formatItalianDateShort(end)}`;
+    return `${formatDateShort(start, locale)}${t("common.dateRangeSeparator")}${formatDateShort(end, locale)}`;
   }
-  if (start) return formatItalianDate(start);
-  if (end) return formatItalianDate(end);
+  if (start) return formatDateLong(start, locale);
+  if (end) return formatDateLong(end, locale);
   return "";
 }
 
-/** Prossima domenica e lunedì (weekend classico) */
 export function defaultWeekendDates(): { start: string; end: string } {
   const now = new Date();
   const day = now.getDay();
@@ -59,9 +86,14 @@ export function defaultWeekendDates(): { start: string; end: string } {
   return { start: toISODate(sunday), end: toISODate(monday) };
 }
 
-export function scheduleEntryLabel(eventDate: string | null, dayLabel: string): string {
-  if (eventDate) return formatItalianDate(eventDate);
-  return dayLabel || "Senza data";
+export function scheduleEntryLabel(
+  eventDate: string | null,
+  dayLabel: string,
+  locale: Locale = "it"
+): string {
+  const t = createTranslator(getMessages(locale));
+  if (eventDate) return formatDateLong(eventDate, locale);
+  return dayLabel || t("common.noDate");
 }
 
 export function countNights(start: string | null, end: string | null): number {
@@ -79,7 +111,6 @@ export function compareEventDates(a: string | null, b: string | null): number {
   return a.localeCompare(b);
 }
 
-/** Prossimo evento timeline con data >= oggi */
 export function getNextTimelineEntry<T extends {
   entry_type: string;
   event_date: string | null;

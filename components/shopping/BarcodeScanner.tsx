@@ -13,6 +13,7 @@ import {
   type ScanEngine,
   type ScannerHandle,
 } from "@/lib/barcode-scanner-engine";
+import { useTranslations, useLocale } from "@/lib/i18n/client";
 
 interface BarcodeScannerProps {
   open: boolean;
@@ -20,7 +21,7 @@ interface BarcodeScannerProps {
   onDetected: (product: OffProduct) => void;
 }
 
-function ScanGuide() {
+function ScanGuide({ alignLabel }: { alignLabel: string }) {
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-4">
       <div
@@ -29,7 +30,7 @@ function ScanGuide() {
       >
         <div className="absolute inset-x-4 top-1/2 h-0.5 bg-ember/90 -translate-y-1/2" />
         <p className="absolute -bottom-7 left-0 right-0 text-center text-[11px] text-cream/80">
-          Allinea il codice qui
+          {alignLabel}
         </p>
       </div>
     </div>
@@ -37,6 +38,9 @@ function ScanGuide() {
 }
 
 export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProps) {
+  const { t } = useTranslations();
+  const locale = useLocale();
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const handleRef = useRef<ScannerHandle | null>(null);
   const busyRef = useRef(false);
@@ -68,11 +72,11 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
     await stopScanner();
     feedbackOnScan();
     setError(null);
-    setStatus("Carico prodotto…");
+    setStatus(t("shopping.loadingProduct"));
 
     let product: OffProduct;
     try {
-      product = await lookupBarcodeProduct(cleaned);
+      product = await lookupBarcodeProduct(cleaned, locale);
     } catch {
       product = {
         barcode: cleaned,
@@ -85,7 +89,7 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
         category: "cibo",
         found: false,
       };
-      if (fromManual) setError("Errore di rete");
+      if (fromManual) setError(t("errors.networkError"));
     }
 
     busyRef.current = false;
@@ -99,7 +103,7 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
     if (!video) return;
 
     await stopScanner();
-    setStatus("Avvio fotocamera posteriore…");
+    setStatus(t("shopping.startingCamera"));
     setError(null);
 
     try {
@@ -108,9 +112,9 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
       });
       handleRef.current = handle;
       setEngine(handle.engine);
-      setStatus("Punta la fotocamera posteriore sul codice");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Fotocamera non disponibile");
+      setStatus(t("shopping.pointCamera"));
+    } catch {
+      setError(t("errors.cameraUnavailable"));
       setStatus("");
       setMode("manual");
     }
@@ -131,23 +135,23 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
       return;
     }
 
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       requestAnimationFrame(() => void bootCamera());
     }, 150);
 
     return () => {
-      clearTimeout(t);
+      clearTimeout(timer);
       void stopScanner();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mode]);
 
   async function handlePhotoScan(file: File) {
-    setStatus("Leggo foto…");
+    setStatus(t("shopping.readingPhoto"));
     const code = await scanBarcodeFromFile(file);
     if (code) void lookupAndDeliver(code, true);
     else {
-      setError("Codice non leggibile");
+      setError(t("errors.barcodeNotReadable"));
       setStatus("");
     }
   }
@@ -164,7 +168,7 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
         <div className="flex items-center justify-between px-4 py-3 bg-night/95 border-b border-glass-border shrink-0 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <span className="text-sm font-medium text-cream flex items-center gap-2">
             <ScanBarcode className="w-5 h-5 text-ember" />
-            Scanner
+            {t("shopping.scannerTitle")}
           </span>
           <div className="flex items-center gap-2">
             {mode === "camera" && (
@@ -172,7 +176,7 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
                 type="button"
                 onClick={() => void bootCamera()}
                 className="p-2 text-cream/50 hover:text-cream rounded-lg"
-                aria-label="Riavvia fotocamera"
+                aria-label={t("shopping.restartCamera")}
               >
                 <RefreshCw className="w-4 h-4" />
               </button>
@@ -181,7 +185,7 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
               type="button"
               onClick={() => { void stopScanner(); onClose(); }}
               className="p-2 text-cream/50 hover:text-cream rounded-lg"
-              aria-label="Chiudi"
+              aria-label={t("common.close")}
             >
               <X className="w-5 h-5" />
             </button>
@@ -198,12 +202,12 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
                 muted
                 autoPlay
               />
-              <ScanGuide />
+              <ScanGuide alignLabel={t("shopping.alignCode")} />
             </div>
 
             <div className="shrink-0 bg-night border-t border-glass-border px-4 py-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
               <p className="text-xs text-center text-cream/55 mb-3">
-                {status || (engine ? "Tieni il telefono verticale, codice al centro" : "…")}
+                {status || (engine ? t("shopping.holdPhoneVertical") : "…")}
               </p>
               <div className="flex gap-2">
                 <button
@@ -211,14 +215,14 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
                   onClick={() => { void stopScanner(); setMode("manual"); }}
                   className="flex-1 py-3 text-xs text-cream/70 bg-white/5 rounded-xl flex items-center justify-center gap-1.5"
                 >
-                  <Keyboard className="w-4 h-4" /> Codice manuale
+                  <Keyboard className="w-4 h-4" /> {t("shopping.manualCode")}
                 </button>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className="flex-1 py-3 text-xs text-cream/70 bg-white/5 rounded-xl flex items-center justify-center gap-1.5"
                 >
-                  <Camera className="w-4 h-4" /> Da foto
+                  <Camera className="w-4 h-4" /> {t("shopping.fromPhoto")}
                 </button>
               </div>
             </div>
@@ -226,17 +230,17 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
         ) : (
           <div className="flex-1 p-4 space-y-4 bg-night pb-[max(1rem,env(safe-area-inset-bottom))]">
             <form onSubmit={(e) => { e.preventDefault(); void lookupAndDeliver(manualCode, true); }}>
-              <Label className="text-xs">Codice EAN</Label>
+              <Label className="text-xs">{t("shopping.eanLabel")}</Label>
               <Input
                 value={manualCode}
                 onChange={(e) => setManualCode(e.target.value.replace(/\D/g, ""))}
-                placeholder="8001234567890"
+                placeholder={t("shopping.eanPlaceholder")}
                 inputMode="numeric"
                 autoFocus
                 className="font-mono text-lg mt-1"
               />
               <Button type="submit" className="w-full mt-3" disabled={manualCode.length < 8}>
-                Cerca prodotto
+                {t("shopping.searchProduct")}
               </Button>
             </form>
             <button
@@ -244,7 +248,7 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
               onClick={() => { setMode("camera"); setError(null); }}
               className="w-full text-sm text-cream/50 hover:text-cream"
             >
-              Torna alla fotocamera
+              {t("shopping.backToCamera")}
             </button>
           </div>
         )}

@@ -10,17 +10,25 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { ItemActions } from "@/components/ui/ItemActions";
 import { cn } from "@/lib/utils";
-import type { Equipment, TripMember } from "@/lib/types";
+import { PracticalEssentials } from "@/components/equipment/PracticalEssentials";
+import { PersonalPackingChecklist } from "@/components/equipment/PersonalPackingChecklist";
+import { useTranslations } from "@/lib/i18n/client";
+import type { Equipment, PersonalPackingItem, TripMember } from "@/lib/types";
 
 export function EquipmentPageContent({
   tripId,
+  userId,
   members,
   initialEquipment,
+  initialPersonalItems,
 }: {
   tripId: string;
+  userId: string;
   members: TripMember[];
   initialEquipment: Equipment[];
+  initialPersonalItems: PersonalPackingItem[];
 }) {
+  const { t } = useTranslations();
   const [equipment, setEquipment] = useState(initialEquipment);
   const [newItem, setNewItem] = useState("");
   const [critical, setCritical] = useState(false);
@@ -41,14 +49,30 @@ export function EquipmentPageContent({
     load();
   }
 
+  async function addEquipmentItem(name: string, isCritical: boolean) {
+    const supabase = createClient();
+    await supabase.from("equipment").insert({ trip_id: tripId, item_name: name.trim(), critical: isCritical });
+    await load();
+  }
+
   async function addEquipment(e: React.FormEvent) {
     e.preventDefault();
     if (!newItem.trim()) return;
-    const supabase = createClient();
-    await supabase.from("equipment").insert({ trip_id: tripId, item_name: newItem.trim(), critical });
+    await addEquipmentItem(newItem, critical);
     setNewItem("");
     setCritical(false);
-    load();
+  }
+
+  async function addEssentialItems(items: { name: string; critical: boolean }[]) {
+    const supabase = createClient();
+    await supabase.from("equipment").insert(
+      items.map((item) => ({
+        trip_id: tripId,
+        item_name: item.name.trim(),
+        critical: item.critical,
+      }))
+    );
+    await load();
   }
 
   function startEdit(item: Equipment) {
@@ -76,19 +100,28 @@ export function EquipmentPageContent({
   const criticalPending = equipment.filter((e) => e.critical && !e.confirmed);
   const ready = equipment.filter((e) => e.confirmed).length;
 
+  const description =
+    criticalPending.length > 0
+      ? t("equipment.descriptionWithCritical", {
+          ready,
+          total: equipment.length,
+          critical: criticalPending.length,
+        })
+      : t("equipment.description", { ready, total: equipment.length });
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Attrezzatura"
-        description={`${ready}/${equipment.length} confermati${criticalPending.length > 0 ? ` · ${criticalPending.length} critici mancanti` : ""}`}
+        title={t("equipment.title")}
+        description={description}
         icon={AlertTriangle}
-        badge="Equip"
+        badge={t("equipment.badge")}
       />
 
       {criticalPending.length > 0 && (
         <Card className="border-red-500/30 bg-red-950/20 p-4">
           <CardTitle className="text-base flex items-center gap-2 text-red-200">
-            <AlertTriangle className="w-4 h-4" /> Non dimenticare!
+            <AlertTriangle className="w-4 h-4" /> {t("equipment.dontForget")}
           </CardTitle>
           <div className="flex flex-wrap gap-2 mt-2">
             {criticalPending.map((e) => (
@@ -102,11 +135,11 @@ export function EquipmentPageContent({
 
       <Card>
         <form onSubmit={addEquipment} className="flex flex-col sm:flex-row gap-2 sm:items-center">
-          <Input value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Es. griglia, tenda..." className="flex-1 min-w-0" />
+          <Input value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder={t("equipment.newItemPlaceholder")} className="flex-1 min-w-0" />
           <div className="flex items-center gap-2 shrink-0">
             <label className="flex items-center gap-1.5 text-sm text-cream/60 cursor-pointer whitespace-nowrap">
               <input type="checkbox" checked={critical} onChange={(e) => setCritical(e.target.checked)} className="accent-ember" />
-              Critico
+              {t("equipment.critical")}
             </label>
             <Button type="submit" size="sm"><Plus className="w-4 h-4" /></Button>
           </div>
@@ -137,7 +170,7 @@ export function EquipmentPageContent({
                       {item.item_name}
                       {item.critical && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-red-900/40 text-red-200 border border-red-800/50 flex items-center gap-1 shrink-0">
-                          <AlertTriangle className="w-3 h-3" /> Critico
+                          <AlertTriangle className="w-3 h-3" /> {t("equipment.critical")}
                         </span>
                       )}
                     </span>
@@ -145,11 +178,11 @@ export function EquipmentPageContent({
                 </div>
                 <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                   <Select className="w-full sm:w-auto sm:min-w-[120px] text-sm py-1.5" value={item.assigned_to ?? ""} onChange={(e) => updateEquipment(item.id, { assigned_to: e.target.value || null })}>
-                    <option value="">Chi porta?</option>
+                    <option value="">{t("equipment.whoBrings")}</option>
                     {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}
                   </Select>
                   <button onClick={() => updateEquipment(item.id, { critical: !item.critical })} className={cn("text-xs px-2 py-1 rounded-lg border whitespace-nowrap", item.critical ? "border-red-800 text-red-300" : "border-glass-border text-cream/40")}>
-                    {item.critical ? "Critico" : "Normale"}
+                    {item.critical ? t("equipment.critical") : t("equipment.normal")}
                   </button>
                   {editingId === item.id ? (
                     <ItemActions editing onEdit={() => {}} onDelete={() => deleteEquipment(item.id)} onSave={saveEdit} onCancel={cancelEdit} />
@@ -162,6 +195,20 @@ export function EquipmentPageContent({
           </li>
         ))}
       </ul>
+
+      <PersonalPackingChecklist
+        tripId={tripId}
+        userId={userId}
+        initialItems={initialPersonalItems}
+        t={t}
+      />
+
+      <PracticalEssentials
+        equipment={equipment}
+        t={t}
+        onAdd={addEquipmentItem}
+        onAddAll={addEssentialItems}
+      />
     </div>
   );
 }

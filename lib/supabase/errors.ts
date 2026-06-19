@@ -3,16 +3,16 @@ export function mapSupabaseError(message: string, code?: string): string {
     code === "PGRST205" ||
     message.includes("Could not find the table")
   ) {
-    return "Database non configurato. Esegui `npm run db:migrate` per creare le tabelle.";
+    return "errors.dbNotConfigured";
   }
   if (
     code === "PGRST202" ||
     message.includes("Could not find the function")
   ) {
-    return "Funzioni database mancanti. Esegui `npm run db:migrate`.";
+    return "errors.dbFunctionsMissing";
   }
   if (message.includes("Invalid JWT")) {
-    return "Chiave API non valida. Controlla .env.local (publishable o anon key).";
+    return "errors.invalidApiKey";
   }
   return message;
 }

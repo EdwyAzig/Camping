@@ -3,8 +3,11 @@
 import { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Tent, Flame } from "lucide-react";
+import { Flame } from "lucide-react";
+import { CamplyLogo } from "@/components/ui/CamplyLogo";
 import { createClient } from "@/lib/supabase/client";
+import { useTranslations } from "@/lib/i18n/client";
+import { localizeAuthError } from "@/lib/i18n/errors";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { Card, CardTitle, CardDescription } from "@/components/ui/Card";
@@ -18,6 +21,7 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
+  const { t } = useTranslations();
   const router = useRouter();
   const searchParams = useSearchParams();
   const joinCode = searchParams.get("join");
@@ -38,7 +42,7 @@ function LoginForm() {
     });
 
     if (authError) {
-      setError(authError.message);
+      setError(localizeAuthError(t, authError.message));
       setLoading(false);
       return;
     }
@@ -51,42 +55,37 @@ function LoginForm() {
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md animate-fade-up">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-ember/25 to-ember/5 border border-ember/30 mb-5 campfire-icon ember-glow">
-            <Tent className="w-9 h-9 text-ember" />
-          </div>
-          <h1 className="font-[family-name:var(--font-fraunces)] text-3xl md:text-4xl text-shimmer">
-            Camping Control Center
-          </h1>
-          <p className="text-cream/55 mt-3 flex items-center justify-center gap-2 text-sm">
+          <CamplyLogo className="mx-auto h-16 sm:h-20 w-auto mb-5" priority />
+          <p className="text-cream/55 flex items-center justify-center gap-2 text-sm">
             <Flame className="w-4 h-4 text-ember campfire-icon" />
-            Organizza il campeggio con il gruppo
+            {t("common.appTaglineShort")}
           </p>
         </div>
 
         <Card glow gradient>
-          <CardTitle>Accedi</CardTitle>
+          <CardTitle>{t("auth.loginTitle")}</CardTitle>
           <CardDescription className="mb-6">
-            Entra con il tuo account per vedere il campeggio
+            {t("auth.loginDescription")}
           </CardDescription>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label>Email</Label>
+              <Label>{t("common.email")}</Label>
               <Input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="tu@email.com"
+                placeholder={t("auth.emailPlaceholder")}
                 required
               />
             </div>
             <div>
-              <Label>Password</Label>
+              <Label>{t("common.password")}</Label>
               <Input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder={t("auth.passwordPlaceholder")}
                 required
               />
             </div>
@@ -96,17 +95,17 @@ function LoginForm() {
               </p>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Accesso..." : "Entra"}
+              {loading ? t("common.loggingIn") : t("auth.loginSubmit")}
             </Button>
           </form>
 
           <p className="text-center text-sm text-cream/45 mt-6">
-            Non hai un account?{" "}
+            {t("auth.noAccount")}{" "}
             <Link
               href={joinCode ? `/register?join=${joinCode}` : "/register"}
               className="text-ember hover:underline font-medium"
             >
-              Registrati
+              {t("auth.registerLink")}
             </Link>
           </p>
         </Card>

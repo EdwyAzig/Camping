@@ -1,3 +1,6 @@
+import type { Locale } from "@/lib/i18n/config";
+import { getMessages } from "@/lib/i18n/messages";
+import { createTranslator } from "@/lib/i18n/translate";
 import { countNights } from "./dates";
 import { calcLineTotal } from "./shopping-utils";
 import type { Trip, ShoppingItem, Equipment, Activity, TripPayment, TripMember, FinanceSummary } from "./types";
@@ -80,14 +83,19 @@ export function calcEquipmentProgress(items: Equipment[]) {
   return Math.round((items.filter((i) => i.confirmed).length / items.length) * 100);
 }
 
-export function getUrgentItems(equipment: Equipment[], shopping: ShoppingItem[]) {
+export function getUrgentItems(
+  equipment: Equipment[],
+  shopping: ShoppingItem[],
+  locale: Locale = "it"
+) {
   const urgent: { label: string; type: "equipment" | "shopping" }[] = [];
+  const keywordsRaw = createTranslator(getMessages(locale))("finance.criticalShoppingKeywords");
+  const criticalNames = keywordsRaw.split(",").map((k) => k.trim().toLowerCase()).filter(Boolean);
 
   equipment
     .filter((e) => e.critical && !e.confirmed)
     .forEach((e) => urgent.push({ label: e.item_name, type: "equipment" }));
 
-  const criticalNames = ["griglia", "acqua", "tenda", "primo soccorso", "kit primo soccorso"];
   shopping
     .filter((s) => !s.bought && criticalNames.some((n) => s.name.toLowerCase().includes(n)))
     .forEach((s) => urgent.push({ label: s.name, type: "shopping" }));

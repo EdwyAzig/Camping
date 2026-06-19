@@ -1,13 +1,8 @@
+import type { TFunction } from "@/lib/i18n/translate";
+
 export type TripPhase = "partenza" | "soggiorno" | "ritorno" | "generale";
 
 export const TRIP_PHASES: TripPhase[] = ["partenza", "soggiorno", "ritorno", "generale"];
-
-export const PHASE_LABELS: Record<TripPhase, string> = {
-  partenza: "Partenza",
-  soggiorno: "Al campeggio",
-  ritorno: "Ritorno a casa",
-  generale: "Generale",
-};
 
 export const PHASE_ORDER: Record<TripPhase, number> = {
   partenza: 0,
@@ -25,6 +20,11 @@ const PARTENZA_KEYWORDS = [
   "auto",
   "strada",
   "carico",
+  "departure",
+  "leave",
+  "meet",
+  "plecare",
+  "plecăm",
 ];
 
 const RITORNO_KEYWORDS = [
@@ -35,6 +35,10 @@ const RITORNO_KEYWORDS = [
   "casa",
   "fine viaggio",
   "arrivo a casa",
+  "return",
+  "home",
+  "întoarcere",
+  "acasă",
 ];
 
 const SOGGIORNO_KEYWORDS = [
@@ -55,6 +59,10 @@ const SOGGIORNO_KEYWORDS = [
   "mattina",
   "pomeriggio",
   "sera",
+  "campsite",
+  "camp",
+  "grill",
+  "camping",
 ];
 
 export function detectPhase(text: string): TripPhase {
@@ -74,29 +82,57 @@ export function sortByPhase<T extends { phase: TripPhase; sort_order?: number }>
   });
 }
 
-export const TIMELINE_PRESETS = [
+const TIMELINE_PRESET_DEFS = [
   {
+    id: "presetMeetDeparture",
     phase: "partenza" as TripPhase,
     dayOffset: 0,
     time_note: "18:15",
-    description: "Ritrovo e partenza",
   },
   {
+    id: "presetArriveCamp",
     phase: "soggiorno" as TripPhase,
     dayOffset: 0,
     time_note: "19:00",
-    description: "Arrivo in campeggio",
   },
   {
+    id: "presetReturnHome",
     phase: "ritorno" as TripPhase,
     dayOffset: 1,
     time_note: "14:30",
-    description: "Rientro a casa",
   },
 ] as const;
 
-export const NATURAL_PHRASE_SUGGESTIONS = [
-  { text: "Partiamo domenica dopo le 18:00", phase: "partenza" as TripPhase },
-  { text: "Rientriamo lunedì dopo pranzo", phase: "ritorno" as TripPhase },
-  { text: "Se piove, spostiamo a sabato prossimo", phase: "generale" as TripPhase },
-];
+const NATURAL_PHRASE_DEFS = [
+  { id: "suggestionSundayDeparture", phase: "partenza" as TripPhase },
+  { id: "suggestionMondayReturn", phase: "ritorno" as TripPhase },
+  { id: "suggestionRainSaturday", phase: "generale" as TripPhase },
+] as const;
+
+export type TimelinePreset = {
+  phase: TripPhase;
+  dayOffset: number;
+  time_note: string;
+  description: string;
+};
+
+export type NaturalPhraseSuggestion = {
+  text: string;
+  phase: TripPhase;
+};
+
+export function getTimelinePresets(t: TFunction): TimelinePreset[] {
+  return TIMELINE_PRESET_DEFS.map((preset) => ({
+    phase: preset.phase,
+    dayOffset: preset.dayOffset,
+    time_note: preset.time_note,
+    description: t(`schedule.${preset.id}`),
+  }));
+}
+
+export function getNaturalPhraseSuggestions(t: TFunction): NaturalPhraseSuggestion[] {
+  return NATURAL_PHRASE_DEFS.map((s) => ({
+    text: t(`schedule.${s.id}`),
+    phase: s.phase,
+  }));
+}

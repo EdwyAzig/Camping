@@ -6,9 +6,10 @@ import { createClient } from "@/lib/supabase/client";
 import { useRealtimeTable } from "@/lib/hooks/useRealtimeTable";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
-import { Card, CardTitle } from "@/components/ui/Card";
+import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ItemActions } from "@/components/ui/ItemActions";
+import { useTranslations } from "@/lib/i18n/client";
 import type { Meal, TripMember } from "@/lib/types";
 
 export function MealsPageContent({
@@ -20,9 +21,10 @@ export function MealsPageContent({
   members: TripMember[];
   initialMeals: Meal[];
 }) {
+  const { t } = useTranslations();
   const [meals, setMeals] = useState(initialMeals);
   const [title, setTitle] = useState("");
-  const [dayLabel, setDayLabel] = useState("Domenica");
+  const [dayLabel, setDayLabel] = useState(t("meals.defaultDay"));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDayLabel, setEditDayLabel] = useState("");
@@ -71,7 +73,7 @@ export function MealsPageContent({
     const supabase = createClient();
     await supabase.from("meals").update({
       title: editTitle.trim(),
-      day_label: editDayLabel.trim() || "Generale",
+      day_label: editDayLabel.trim() || t("common.general"),
     }).eq("id", editingId);
     setEditingId(null);
     load();
@@ -84,21 +86,21 @@ export function MealsPageContent({
     load();
   }
 
-  const memberName = (id: string | null) => members.find((m) => m.user_id === id)?.display_name ?? "—";
+  const memberName = (id: string | null) => members.find((m) => m.user_id === id)?.display_name ?? t("common.dash");
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Pasti"
-        description="Chi cucina, chi porta, cosa serve"
+        title={t("meals.title")}
+        description={t("meals.description")}
         icon={ChefHat}
-        badge="Cucina"
+        badge={t("meals.badge")}
       />
 
       <Card>
         <form onSubmit={addMeal} className="flex flex-col sm:flex-row gap-2">
-          <Input value={dayLabel} onChange={(e) => setDayLabel(e.target.value)} placeholder="Giorno" className="w-full sm:w-28" />
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Es. Cena grigliata" className="flex-1 min-w-0" />
+          <Input value={dayLabel} onChange={(e) => setDayLabel(e.target.value)} placeholder={t("meals.dayPlaceholder")} className="w-full sm:w-28" />
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("meals.titlePlaceholder")} className="flex-1 min-w-0" />
           <Button type="submit" className="w-full sm:w-auto shrink-0"><Plus className="w-4 h-4" /></Button>
         </form>
       </Card>
@@ -109,8 +111,8 @@ export function MealsPageContent({
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-3">
               {editingId === meal.id ? (
                 <div className="flex-1 flex flex-col sm:flex-row gap-2 min-w-0">
-                  <Input value={editDayLabel} onChange={(e) => setEditDayLabel(e.target.value)} placeholder="Giorno" className="w-full sm:w-28 text-sm" />
-                  <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Titolo pasto" className="flex-1 min-w-0 text-sm" />
+                  <Input value={editDayLabel} onChange={(e) => setEditDayLabel(e.target.value)} placeholder={t("meals.dayPlaceholder")} className="w-full sm:w-28 text-sm" />
+                  <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder={t("meals.mealTitlePlaceholder")} className="flex-1 min-w-0 text-sm" />
                 </div>
               ) : (
                 <div className="min-w-0 flex-1">
@@ -129,37 +131,37 @@ export function MealsPageContent({
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs">Cosa mangiamo</Label>
-                <Textarea value={meal.menu} onChange={(e) => updateMeal(meal.id, "menu", e.target.value)} placeholder="Grigliata, pane, salse..." className="min-h-[60px] text-sm" />
+                <Label className="text-xs">{t("meals.whatWeEat")}</Label>
+                <Textarea value={meal.menu} onChange={(e) => updateMeal(meal.id, "menu", e.target.value)} placeholder={t("meals.whatWeEatPlaceholder")} className="min-h-[60px] text-sm" />
               </div>
               <div>
-                <Label className="text-xs">Ingredienti da portare</Label>
-                <Textarea value={meal.ingredients} onChange={(e) => updateMeal(meal.id, "ingredients", e.target.value)} placeholder="Carne, pane, verdure..." className="min-h-[60px] text-sm" />
+                <Label className="text-xs">{t("meals.ingredients")}</Label>
+                <Textarea value={meal.ingredients} onChange={(e) => updateMeal(meal.id, "ingredients", e.target.value)} placeholder={t("meals.ingredientsPlaceholder")} className="min-h-[60px] text-sm" />
               </div>
               <div>
-                <Label className="text-xs">Chi cucina</Label>
+                <Label className="text-xs">{t("meals.whoCooks")}</Label>
                 <Select value={meal.cook ?? ""} onChange={(e) => updateMeal(meal.id, "cook", e.target.value || null)} className="text-sm">
-                  <option value="">—</option>
+                  <option value="">{t("common.dash")}</option>
                   {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}
                 </Select>
               </div>
               <div>
-                <Label className="text-xs">Chi porta gli ingredienti</Label>
+                <Label className="text-xs">{t("meals.whoBrings")}</Label>
                 <Select value={meal.who_brings ?? ""} onChange={(e) => updateMeal(meal.id, "who_brings", e.target.value || null)} className="text-sm">
-                  <option value="">—</option>
+                  <option value="">{t("common.dash")}</option>
                   {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}
                 </Select>
               </div>
               <div className="sm:col-span-2">
-                <Label className="text-xs">Attrezzatura collegata</Label>
-                <Input value={meal.equipment_needed} onChange={(e) => updateMeal(meal.id, "equipment_needed", e.target.value)} placeholder="Griglia, carbonella, pinze..." />
+                <Label className="text-xs">{t("meals.linkedEquipment")}</Label>
+                <Input value={meal.equipment_needed} onChange={(e) => updateMeal(meal.id, "equipment_needed", e.target.value)} placeholder={t("meals.equipmentPlaceholder")} />
               </div>
             </div>
             {(meal.cook || meal.who_brings) && (
               <p className="text-xs text-cream/40 mt-2">
-                {meal.cook && `Cucina: ${memberName(meal.cook)}`}
+                {meal.cook && t("common.cookLabel", { name: memberName(meal.cook) })}
                 {meal.cook && meal.who_brings && " · "}
-                {meal.who_brings && `Porta: ${memberName(meal.who_brings)}`}
+                {meal.who_brings && t("common.bringsLabel", { name: memberName(meal.who_brings) })}
               </p>
             )}
           </Card>

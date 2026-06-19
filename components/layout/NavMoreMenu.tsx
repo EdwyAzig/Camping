@@ -8,18 +8,13 @@ import {
   Wrench,
   Wallet,
   Users,
+  Settings,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "@/lib/i18n/client";
 
-export const moreNav = [
-  { href: "/luogo", label: "Luogo", icon: Navigation, desc: "Mappa e info" },
-  { href: "/attrezzatura", label: "Attrezzatura", icon: Wrench, desc: "Chi porta cosa" },
-  { href: "/cassa", label: "Cassa", icon: Wallet, desc: "Pagamenti e saldi" },
-  { href: "/sessione", label: "Sessione", icon: Users, desc: "Entra o esci dal gruppo" },
-] as const;
-
-export const morePaths = moreNav.map((item) => item.href);
+export const morePaths = ["/luogo", "/attrezzatura", "/cassa", "/sessione", "/impostazioni"];
 
 export function isMoreNavActive(pathname: string) {
   return morePaths.some((href) => pathname === href || pathname.startsWith(`${href}/`));
@@ -34,7 +29,16 @@ interface NavMoreMenuProps {
 
 export function NavMoreMenu({ open, onOpen, onClose, variant }: NavMoreMenuProps) {
   const pathname = usePathname();
+  const { t } = useTranslations();
   const active = isMoreNavActive(pathname);
+
+  const moreNav = [
+    { href: "/luogo", label: t("nav.location"), icon: Navigation, desc: t("nav.locationDesc") },
+    { href: "/attrezzatura", label: t("nav.equipment"), icon: Wrench, desc: t("nav.equipmentDesc") },
+    { href: "/cassa", label: t("nav.cassa"), icon: Wallet, desc: t("nav.cassaDesc") },
+    { href: "/sessione", label: t("nav.session"), icon: Users, desc: t("nav.sessionDesc") },
+    { href: "/impostazioni", label: t("nav.settings"), icon: Settings, desc: t("nav.settingsDesc") },
+  ];
 
   if (variant === "mobile") {
     return (
@@ -55,7 +59,7 @@ export function NavMoreMenu({ open, onOpen, onClose, variant }: NavMoreMenuProps
           >
             <MoreHorizontal className="w-5 h-5" />
           </div>
-          <span className="text-[9px] font-medium truncate w-full text-center">Altro</span>
+          <span className="text-[9px] font-medium truncate w-full text-center">{t("nav.more")}</span>
         </button>
 
         {open && (
@@ -64,11 +68,11 @@ export function NavMoreMenu({ open, onOpen, onClose, variant }: NavMoreMenuProps
               type="button"
               className="absolute inset-0 bg-night/70 backdrop-blur-sm"
               onClick={onClose}
-              aria-label="Chiudi menu"
+              aria-label={t("nav.closeMenu")}
             />
             <div className="absolute bottom-0 inset-x-0 rounded-t-2xl border-t border-glass-border bg-night/95 backdrop-blur-xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] animate-fade-up">
               <div className="flex items-center justify-between mb-4">
-                <p className="text-sm font-medium text-cream/70">Altre sezioni</p>
+                <p className="text-sm font-medium text-cream/70">{t("nav.moreSections")}</p>
                 <button
                   type="button"
                   onClick={onClose}
@@ -116,7 +120,7 @@ export function NavMoreMenu({ open, onOpen, onClose, variant }: NavMoreMenuProps
         )}
       >
         <MoreHorizontal className="w-4 h-4" />
-        Altro
+        {t("nav.more")}
       </button>
 
       {open && (
@@ -125,7 +129,7 @@ export function NavMoreMenu({ open, onOpen, onClose, variant }: NavMoreMenuProps
             type="button"
             className="fixed inset-0 z-40"
             onClick={onClose}
-            aria-label="Chiudi menu"
+            aria-label={t("nav.closeMenu")}
           />
           <div className="absolute right-0 top-full mt-2 z-50 w-56 rounded-xl border border-glass-border bg-night/95 backdrop-blur-xl shadow-xl p-2 animate-fade-up">
             {moreNav.map(({ href, label, icon: Icon, desc }) => (

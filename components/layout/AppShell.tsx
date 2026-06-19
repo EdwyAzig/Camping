@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Link from "next/link";
+import { CamplyLogo } from "@/components/ui/CamplyLogo";
 import {
-  Tent,
   LayoutDashboard,
   ShoppingCart,
   UtensilsCrossed,
@@ -12,20 +12,16 @@ import {
   Copy,
   Check,
   MapPin,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavMoreMenu } from "@/components/layout/NavMoreMenu";
+import { useSessionManager } from "@/components/session/SessionManagerProvider";
+import { useTranslations } from "@/lib/i18n/client";
 import type { Trip, TripMember } from "@/lib/types";
-
-const mainNav = [
-  { href: "/dashboard", label: "Home", icon: LayoutDashboard },
-  { href: "/programma", label: "Programma", icon: CalendarDays },
-  { href: "/spesa", label: "Spesa", icon: ShoppingCart },
-  { href: "/pasti", label: "Pasti", icon: UtensilsCrossed },
-];
 
 const memberColors = [
   "from-ember/30 to-ember/10 border-ember/40",
@@ -45,8 +41,22 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { t } = useTranslations();
+  const { members: liveMembers } = useSessionManager();
+  const displayMembers = liveMembers.length > 0 ? liveMembers : members;
   const [copied, setCopied] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const sessionActive = pathname === "/sessione";
+
+  const mainNav = useMemo(
+    () => [
+      { href: "/dashboard", label: t("nav.home"), icon: LayoutDashboard },
+      { href: "/programma", label: t("nav.program"), icon: CalendarDays },
+      { href: "/spesa", label: t("nav.shopping"), icon: ShoppingCart },
+      { href: "/pasti", label: t("nav.meals"), icon: UtensilsCrossed },
+    ],
+    [t]
+  );
 
   useEffect(() => {
     setMoreOpen(false);
@@ -72,10 +82,10 @@ export function AppShell({
         <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-ember/30 to-transparent" />
         <div className="max-w-5xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-            <div className="icon-glow shrink-0 campfire-icon !w-9 !h-9 sm:!w-12 sm:!h-12">
-              <Tent className="w-4 h-4 sm:w-5 sm:h-5 text-ember" />
-            </div>
-            <div className="min-w-0">
+            <Link href="/dashboard" className="shrink-0" title={t("nav.home")}>
+              <CamplyLogo variant="icon" className="h-9 w-9 sm:h-10 sm:w-10" />
+            </Link>
+            <div className="min-w-0 border-l border-glass-border pl-2 sm:pl-3">
               <h1 className="font-[family-name:var(--font-fraunces)] text-base sm:text-lg truncate leading-tight">
                 {trip.name}
               </h1>
@@ -86,10 +96,27 @@ export function AppShell({
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <Link
+              href="/sessione"
+              className={cn(
+                "flex items-center gap-1.5 text-xs p-2 sm:px-3 sm:py-1.5 rounded-lg border transition-all",
+                sessionActive
+                  ? "bg-ember/15 border-ember/30 text-ember"
+                  : "bg-forest-light/40 border-glass-border text-cream/80 hover:border-ember/40 hover:bg-forest-light/60"
+              )}
+              title={t("nav.sessionManager")}
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ember/60 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-ember" />
+              </span>
+              <Users className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{displayMembers.length}</span>
+            </Link>
             <button
               onClick={copyInvite}
               className="flex items-center gap-1.5 text-xs bg-forest-light/40 p-2 sm:px-3 sm:py-1.5 rounded-lg border border-glass-border hover:border-ember/40 hover:bg-forest-light/60 transition-all"
-              title="Copia link invito"
+              title={t("nav.copyInviteLink")}
             >
               {copied ? (
                 <Check className="w-3.5 h-3.5 text-ember" />
@@ -99,7 +126,7 @@ export function AppShell({
               <span className="font-mono tracking-wider hidden sm:inline">{trip.invite_code}</span>
             </button>
             <div className="hidden sm:flex -space-x-2">
-              {members.slice(0, 3).map((m, i) => (
+              {displayMembers.slice(0, 3).map((m, i) => (
                 <div
                   key={m.user_id}
                   className={cn(
@@ -111,16 +138,16 @@ export function AppShell({
                   {m.display_name.charAt(0).toUpperCase()}
                 </div>
               ))}
-              {members.length > 3 && (
+              {displayMembers.length > 3 && (
                 <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-night/80 border-2 border-night flex items-center justify-center text-[9px] sm:text-[10px] text-cream/60">
-                  +{members.length - 3}
+                  +{displayMembers.length - 3}
                 </div>
               )}
             </div>
             <button
               onClick={handleLogout}
               className="p-2 text-cream/40 hover:text-cream rounded-lg hover:bg-white/5 transition-colors"
-              title="Esci"
+              title={t("nav.logout")}
             >
               <LogOut className="w-4 h-4" />
             </button>

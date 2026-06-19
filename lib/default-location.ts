@@ -1,9 +1,7 @@
 /** Parco del Gravio — Riverside Outdoor, Condove (TO) */
 export const DEFAULT_CAMPING_LOCATION = {
-  name: "Parco del Gravio, Condove",
   lat: 45.1163418,
   lng: 7.2956743,
-  address: "Borgata Poisatto 68, 10055 Condove (TO)",
   mapsUrl: "https://maps.app.goo.gl/upeih1rPfW4gsmpo7",
 } as const;
 

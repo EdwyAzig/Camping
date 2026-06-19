@@ -11,23 +11,24 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ItemActions } from "@/components/ui/ItemActions";
 import { ActivityCard } from "@/components/activities/ActivityCard";
 import { ActivityForm } from "@/components/activities/ActivityForm";
-import { cn, formatEuro } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   addDays,
   dayLabelFromDate,
+  formatDateLong,
   formatDateRange,
-  formatItalianDate,
-  formatItalianDateShort,
-  scheduleEntryLabel,
+  formatDateShort,
 } from "@/lib/dates";
 import {
   detectPhase,
-  NATURAL_PHRASE_SUGGESTIONS,
-  PHASE_LABELS,
-  TIMELINE_PRESETS,
+  getNaturalPhraseSuggestions,
+  getTimelinePresets,
   TRIP_PHASES,
+  type TimelinePreset,
 } from "@/lib/trip-phases";
 import { NO_ACTIVITY_DATE, resolveActivityDateKey } from "@/lib/activity-dates";
+import { useTranslations, useFormatEuro } from "@/lib/i18n/client";
+import { getPhaseLabel } from "@/lib/i18n/enums";
 import type { ActivityWithDetails, ScheduleEntry, ScheduleEntryType, Trip, TripMember, TripPhase } from "@/lib/types";
 
 const PHASE_ICONS: Record<TripPhase, typeof Car> = {
@@ -36,8 +37,6 @@ const PHASE_ICONS: Record<TripPhase, typeof Car> = {
   ritorno: Home,
   generale: Clock,
 };
-
-const NO_DATE_KEY = "__no_date__";
 
 export function SchedulePageContent({
   tripId,
@@ -54,6 +53,10 @@ export function SchedulePageContent({
   initialEntries: ScheduleEntry[];
   initialActivities?: ActivityWithDetails[];
 }) {
+  const { locale, t } = useTranslations();
+  const formatEuro = useFormatEuro();
+  const timelinePresets = useMemo(() => getTimelinePresets(t), [t]);
+  const naturalPhraseSuggestions = useMemo(() => getNaturalPhraseSuggestions(t), [t]);
   const [trip, setTrip] = useState(initialTrip);
   const [entries, setEntries] = useState(initialEntries);
   const [activities, setActivities] = useState(initialActivities);
@@ -84,11 +87,11 @@ export function SchedulePageContent({
         .order("created_at"),
     ]);
     if (tripData) {
-      const t = tripData as Trip;
-      setTrip(t);
-      setStartDate(t.start_date ?? "");
-      setEndDate(t.end_date ?? "");
-      if (!eventDate && t.start_date) setEventDate(t.start_date);
+      const tripRecord = tripData as Trip;
+      setTrip(tripRecord);
+      setStartDate(tripRecord.start_date ?? "");
+      setEndDate(tripRecord.end_date ?? "");
+      if (!eventDate && tripRecord.start_date) setEventDate(tripRecord.start_date);
     }
     if (scheduleData) setEntries(scheduleData as ScheduleEntry[]);
     if (activityData) setActivities(activityData as ActivityWithDetails[]);
@@ -133,12 +136,12 @@ export function SchedulePageContent({
       .sort()
       .map((key) => ({
         key,
-        label: formatItalianDate(key),
+        label: formatDateLong(key, locale),
         items: timeline
           .filter((e) => e.event_date === key)
           .sort((a, b) => a.sort_order - b.sort_order),
       }));
-  }, [timeline, activitiesByDate]);
+  }, [timeline, activitiesByDate, locale]);
 
   const unscheduledActivities = activitiesByDate.get(NO_ACTIVITY_DATE) ?? [];
   const activitiesTotal = activities.reduce((s, a) => s + (a.estimated_cost ?? 0), 0);
@@ -153,8 +156,8 @@ export function SchedulePageContent({
       .update({
         start_date: startDate,
         end_date: resolvedEnd,
-        departure_date: formatItalianDateShort(startDate),
-        return_note: formatItalianDateShort(resolvedEnd),
+        departure_date: formatDateShort(startDate, locale),
+        return_note: formatDateShort(resolvedEnd, locale),
       })
       .eq("id", tripId)
       .select()
@@ -167,7 +170,7 @@ export function SchedulePageContent({
     setSavingDates(false);
   }
 
-  function resolvePresetDate(preset: (typeof TIMELINE_PRESETS)[number]): string | null {
+  function resolvePresetDate(preset: TimelinePreset): string | null {
     const base = startDate || trip.start_date;
     if (!base) return null;
     if (preset.phase === "ritorno") {
@@ -188,7 +191,7 @@ export function SchedulePageContent({
 
     await supabase.from("schedule_entries").insert({
       trip_id: tripId,
-      day_label: isoDate ? dayLabelFromDate(isoDate) : "Generale",
+      day_label: isoDate ? dayLabelFromDate(isoDate, locale) : t("common.general"),
       event_date: isoDate,
       time_note: timeNote.trim(),
       description: description.trim(),
@@ -201,7 +204,7 @@ export function SchedulePageContent({
     load();
   }
 
-  async function applyPreset(preset: (typeof TIMELINE_PRESETS)[number]) {
+  async function applyPreset(preset: TimelinePreset) {
     const isoDate = resolvePresetDate(preset);
     if (!isoDate) return;
 
@@ -209,7 +212,7 @@ export function SchedulePageContent({
     const maxOrder = entries.reduce((m, x) => Math.max(m, x.sort_order), 0);
     await supabase.from("schedule_entries").insert({
       trip_id: tripId,
-      day_label: dayLabelFromDate(isoDate),
+      day_label: dayLabelFromDate(isoDate, locale),
       event_date: isoDate,
       time_note: preset.time_note,
       description: preset.description,
@@ -249,7 +252,7 @@ export function SchedulePageContent({
       .update({
         description: editDescription.trim(),
         event_date: editIsTimeline && editEventDate ? editEventDate : null,
-        day_label: editIsTimeline && editEventDate ? dayLabelFromDate(editEventDate) : "Generale",
+        day_label: editIsTimeline && editEventDate ? dayLabelFromDate(editEventDate, locale) : t("common.general"),
         time_note: editTimeNote.trim(),
         phase: resolvedPhase,
       })
@@ -278,44 +281,44 @@ export function SchedulePageContent({
     );
   }
 
-  const tripRange = formatDateRange(trip.start_date, trip.end_date);
+  const tripRange = formatDateRange(trip.start_date, trip.end_date, locale);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Programma & Attività"
+        title={t("schedule.title")}
         description={
           tripRange
-            ? `${tripRange} · Attività ${formatEuro(activitiesTotal)}`
-            : "Imposta le date del viaggio e organizza eventi e attività"
+            ? t("schedule.descriptionWithDates", { range: tripRange, amount: formatEuro(activitiesTotal) })
+            : t("schedule.descriptionNoDates")
         }
         icon={Clock}
-        badge="Programma"
+        badge={t("schedule.badge")}
       />
 
       <Card className="border-ember/20">
         <CardTitle className="text-base flex items-center gap-2 mb-4">
           <CalendarDays className="w-4 h-4 text-ember" />
-          Date del viaggio
+          {t("schedule.tripDates")}
         </CardTitle>
         <div className="grid sm:grid-cols-3 gap-3 items-end">
           <div>
-            <Label>Partenza</Label>
+            <Label>{t("schedule.departure")}</Label>
             <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-            {startDate && <p className="text-xs text-cream/45 mt-1">{formatItalianDate(startDate)}</p>}
+            {startDate && <p className="text-xs text-cream/45 mt-1">{formatDateLong(startDate, locale)}</p>}
           </div>
           <div>
-            <Label>Ritorno</Label>
+            <Label>{t("schedule.return")}</Label>
             <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} min={startDate || undefined} />
-            {endDate && <p className="text-xs text-cream/45 mt-1">{formatItalianDate(endDate)}</p>}
+            {endDate && <p className="text-xs text-cream/45 mt-1">{formatDateLong(endDate, locale)}</p>}
           </div>
           <Button type="button" onClick={saveTripDates} disabled={!startDate || savingDates}>
-            {savingDates ? "Salvo..." : "Salva date"}
+            {savingDates ? t("common.saving") : t("schedule.saveDates")}
           </Button>
         </div>
         {!startDate && (
           <p className="text-xs text-amber-200/80 mt-3">
-            Imposta almeno la data di partenza — così il sistema sa quale domenica o lunedì intendi.
+            {t("schedule.setDepartureHint")}
           </p>
         )}
       </Card>
@@ -324,7 +327,7 @@ export function SchedulePageContent({
         <section>
           <CardTitle className="flex items-center gap-2 mb-3">
             <MessageCircle className="w-4 h-4 text-ember" />
-            In sintesi
+            {t("schedule.inSummary")}
           </CardTitle>
           <ul className="space-y-2">
             {natural.map((entry) => {
@@ -337,7 +340,7 @@ export function SchedulePageContent({
                       {editingId !== entry.id && (
                         <span className="shrink-0 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-ember/70 px-2 py-1 rounded-full bg-ember/10 border border-ember/20 h-fit">
                           <Icon className="w-3 h-3" />
-                          {PHASE_LABELS[entryPhase]}
+                          {getPhaseLabel(entryPhase, t)}
                         </span>
                       )}
                       {editingId === entry.id ? (
@@ -363,19 +366,19 @@ export function SchedulePageContent({
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <CardTitle className="flex items-center gap-2">
             <CalendarDays className="w-4 h-4 text-ember" />
-            Calendario
+            {t("schedule.calendar")}
           </CardTitle>
           <div className="flex flex-wrap gap-2">
-            {TIMELINE_PRESETS.map((preset) => {
+            {timelinePresets.map((preset) => {
               const Icon = PHASE_ICONS[preset.phase];
               const presetDate = resolvePresetDate(preset);
               return (
                 <button
-                  key={preset.description}
+                  key={`${preset.phase}-${preset.dayOffset}-${preset.time_note}`}
                   type="button"
                   onClick={() => applyPreset(preset)}
                   disabled={!presetDate}
-                  title={presetDate ? formatItalianDateShort(presetDate) : "Imposta prima le date del viaggio"}
+                  title={presetDate ? formatDateShort(presetDate, locale) : t("schedule.presetDatesRequired")}
                   className="text-xs px-2.5 py-1.5 rounded-lg bg-night/40 border border-glass-border text-cream/60 hover:text-cream hover:border-ember/30 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Icon className="w-3 h-3 text-ember/70" />
@@ -388,7 +391,7 @@ export function SchedulePageContent({
 
         {calendarDays.length === 0 ? (
           <Card className="p-6 text-center text-cream/50 text-sm">
-            Nessun evento o attività in calendario. Imposta le date del viaggio e aggiungi sotto.
+            {t("schedule.emptyCalendar")}
           </Card>
         ) : (
           <div className="space-y-6">
@@ -397,7 +400,7 @@ export function SchedulePageContent({
                 <div className="flex items-center gap-2 mb-3">
                   <CalendarDays className="w-4 h-4 text-ember" />
                   <h3 className="text-sm font-medium text-ember">{label}</h3>
-                  <span className="text-xs text-cream/40">{dayLabelFromDate(key)}</span>
+                  <span className="text-xs text-cream/40">{dayLabelFromDate(key, locale)}</span>
                 </div>
                 {items.length > 0 && (
                 <div className="relative">
@@ -426,29 +429,31 @@ export function SchedulePageContent({
                                         )}
                                       >
                                         <PIcon className="w-3 h-3" />
-                                        {PHASE_LABELS[p]}
+                                        {getPhaseLabel(p, t)}
                                       </button>
                                     );
                                   })}
                                 </div>
                                 <div className="grid sm:grid-cols-2 gap-2">
                                   <Input type="date" value={editEventDate} onChange={(e) => setEditEventDate(e.target.value)} className="text-sm" />
-                                  <Input value={editTimeNote} onChange={(e) => setEditTimeNote(e.target.value)} placeholder="Orario" className="text-sm" />
+                                  <Input value={editTimeNote} onChange={(e) => setEditTimeNote(e.target.value)} placeholder={t("schedule.timeInputPlaceholder")} className="text-sm" />
                                 </div>
-                                <Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="Cosa succede" className="text-sm" />
+                                <Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder={t("schedule.whatHappensInputPlaceholder")} className="text-sm" />
                               </div>
                             ) : (
                               <div>
                                 <div className="flex flex-wrap items-center gap-2 text-sm mb-1">
-                                  <span className="text-ember font-medium">{entry.time_note || "—"}</span>
+                                  <span className="text-ember font-medium">{entry.time_note || t("common.dash")}</span>
                                   <span className="text-xs px-2 py-0.5 rounded-full bg-ember/10 border border-ember/20 text-ember/70 flex items-center gap-1">
                                     <PhaseIcon className="w-3 h-3" />
-                                    {PHASE_LABELS[entryPhase]}
+                                    {getPhaseLabel(entryPhase, t)}
                                   </span>
                                 </div>
                                 <p>{entry.description}</p>
                                 {!entry.event_date && entry.day_label && (
-                                  <p className="text-xs text-amber-200/60 mt-1">Vecchia etichetta: {entry.day_label} — assegna una data</p>
+                                  <p className="text-xs text-amber-200/60 mt-1">
+                                    {t("schedule.oldLabelWarning", { label: entry.day_label })}
+                                  </p>
                                 )}
                               </div>
                             )}
@@ -464,7 +469,7 @@ export function SchedulePageContent({
                   <div className="mt-3 ml-0 sm:ml-10 space-y-3">
                     <p className="text-xs text-cream/45 flex items-center gap-1">
                       <MapPin className="w-3 h-3" />
-                      Attività
+                      {t("schedule.activities")}
                     </p>
                     <ul className="space-y-3">
                       {(activitiesByDate.get(key) ?? []).map((a) => (
@@ -494,7 +499,7 @@ export function SchedulePageContent({
         <section>
           <CardTitle className="flex items-center gap-2 mb-3">
             <MapPin className="w-4 h-4 text-emerald-300" />
-            Attività senza data
+            {t("schedule.activitiesNoDate")}
           </CardTitle>
           <ul className="space-y-3">
             {unscheduledActivities.map((a) => (
@@ -516,21 +521,21 @@ export function SchedulePageContent({
 
       <div className="grid lg:grid-cols-2 gap-4">
         <Card>
-          <CardTitle className="text-base mb-4">Aggiungi evento</CardTitle>
+          <CardTitle className="text-base mb-4">{t("schedule.addEvent")}</CardTitle>
         <form onSubmit={handleAdd} className="space-y-3">
           <div className="flex gap-2">
             <Button type="button" variant={entryType === "natural" ? "primary" : "secondary"} size="sm" onClick={() => setEntryType("natural")}>
-              Frase naturale
+              {t("schedule.naturalPhrase")}
             </Button>
             <Button type="button" variant={entryType === "timeline" ? "primary" : "secondary"} size="sm" onClick={() => setEntryType("timeline")}>
-              Evento in calendario
+              {t("schedule.calendarEvent")}
             </Button>
           </div>
 
           {entryType === "timeline" && (
             <>
               <div>
-                <Label>Fase del viaggio</Label>
+                <Label>{t("schedule.tripPhase")}</Label>
                 <div className="flex flex-wrap gap-2 mt-1.5">
                   {TRIP_PHASES.filter((p) => p !== "generale").map((p) => {
                     const Icon = PHASE_ICONS[p];
@@ -547,7 +552,7 @@ export function SchedulePageContent({
                         )}
                       >
                         <Icon className="w-3 h-3" />
-                        {PHASE_LABELS[p]}
+                        {getPhaseLabel(p, t)}
                       </button>
                     );
                   })}
@@ -555,7 +560,7 @@ export function SchedulePageContent({
               </div>
               <div className="grid sm:grid-cols-2 gap-3">
                 <div>
-                  <Label>Data</Label>
+                  <Label>{t("common.date")}</Label>
                   <Input
                     type="date"
                     value={eventDate}
@@ -564,11 +569,11 @@ export function SchedulePageContent({
                     max={endDate || undefined}
                     required
                   />
-                  {eventDate && <p className="text-xs text-cream/45 mt-1">{formatItalianDate(eventDate)}</p>}
+                  {eventDate && <p className="text-xs text-cream/45 mt-1">{formatDateLong(eventDate, locale)}</p>}
                 </div>
                 <div>
-                  <Label>Orario</Label>
-                  <Input value={timeNote} onChange={(e) => setTimeNote(e.target.value)} placeholder="18:15" />
+                  <Label>{t("common.time")}</Label>
+                  <Input value={timeNote} onChange={(e) => setTimeNote(e.target.value)} placeholder={t("schedule.timePlaceholder")} />
                 </div>
               </div>
               {startDate && endDate && (
@@ -580,7 +585,7 @@ export function SchedulePageContent({
                       onClick={() => setEventDate(d)}
                       className="text-xs px-2.5 py-1 rounded-lg bg-night/40 border border-glass-border text-cream/60 hover:text-cream"
                     >
-                      {formatItalianDateShort(d)}
+                      {formatDateShort(d, locale)}
                     </button>
                   ))}
                 </div>
@@ -589,22 +594,22 @@ export function SchedulePageContent({
           )}
 
           <div>
-            <Label>{entryType === "natural" ? "Frase" : "Cosa succede"}</Label>
+            <Label>{entryType === "natural" ? t("schedule.phraseLabel") : t("schedule.whatHappensLabel")}</Label>
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder={entryType === "natural" ? "Partiamo domenica dopo le 18:00" : "Ritrovo e partenza"}
+              placeholder={entryType === "natural" ? t("schedule.naturalPhrasePlaceholder") : t("schedule.timelinePlaceholder")}
             />
             {entryType === "natural" && description.trim() && (
               <p className="text-xs text-cream/45 mt-1">
-                Classificato come: <span className="text-ember">{PHASE_LABELS[detectPhase(description)]}</span>
+                {t("common.classifiedAs", { phase: getPhaseLabel(detectPhase(description), t) })}
               </p>
             )}
           </div>
 
           {entryType === "natural" && (
             <div className="flex flex-wrap gap-2">
-              {NATURAL_PHRASE_SUGGESTIONS.map((s) => (
+              {naturalPhraseSuggestions.map((s) => (
                 <button
                   key={s.text}
                   type="button"
@@ -621,13 +626,13 @@ export function SchedulePageContent({
           )}
 
           <Button type="submit" disabled={entryType === "timeline" && !eventDate}>
-            <Plus className="w-4 h-4" /> Aggiungi evento
+            <Plus className="w-4 h-4" /> {t("schedule.addEventButton")}
           </Button>
         </form>
       </Card>
 
         <Card>
-          <CardTitle className="text-base mb-4">Aggiungi attività</CardTitle>
+          <CardTitle className="text-base mb-4">{t("schedule.addActivity")}</CardTitle>
           <ActivityForm
             tripId={tripId}
             scheduleEntries={entries}

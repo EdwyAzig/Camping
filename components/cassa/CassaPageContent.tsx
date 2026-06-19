@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ItemActions } from "@/components/ui/ItemActions";
 import { StatCard } from "@/components/ui/Progress";
 import { calcFinance } from "@/lib/finance";
-import { formatEuro } from "@/lib/utils";
+import { useTranslations, useFormatEuro } from "@/lib/i18n/client";
 import type { TripPayment, TripMember, Trip, ShoppingItem, Activity } from "@/lib/types";
 
 export function CassaPageContent({
@@ -29,6 +29,8 @@ export function CassaPageContent({
   initialShopping: ShoppingItem[];
   initialActivities: Activity[];
 }) {
+  const { t } = useTranslations();
+  const formatEuro = useFormatEuro();
   const [payments, setPayments] = useState(initialPayments);
   const [shopping, setShopping] = useState(initialShopping);
   const [activities, setActivities] = useState(initialActivities);
@@ -145,38 +147,43 @@ export function CassaPageContent({
     loadPayments();
   }
 
-  const name = (id: string) => members.find((m) => m.user_id === id)?.display_name ?? "?";
+  const name = (id: string) => members.find((m) => m.user_id === id)?.display_name ?? t("common.dash");
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Cassa comune"
-        description="Chi ha anticipato, chi deve rimborsare"
+        title={t("cassa.title")}
+        description={t("cassa.description")}
         icon={Wallet}
-        badge="Finanze"
+        badge={t("cassa.badge")}
       />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 animate-fade-up">
-        <StatCard label="Totale stimato" value={formatEuro(finance.grandTotal)} accent />
-        <StatCard label="Spesa" value={formatEuro(finance.shoppingTotal)} />
-        <StatCard label="Attività + location" value={formatEuro(finance.activitiesTotal + finance.locationTotal)} />
-        <StatCard label="A testa" value={formatEuro(finance.perPerson)} accent />
+        <StatCard label={t("cassa.estimatedTotal")} value={formatEuro(finance.grandTotal)} accent />
+        <StatCard label={t("cassa.shopping")} value={formatEuro(finance.shoppingTotal)} />
+        <StatCard label={t("cassa.activitiesAndLocation")} value={formatEuro(finance.activitiesTotal + finance.locationTotal)} />
+        <StatCard label={t("cassa.perPerson")} value={formatEuro(finance.perPerson)} accent />
       </div>
 
       <Card gradient className="animate-fade-up animate-fade-up-delay-1">
-        <CardTitle className="text-base mb-4">Saldi del gruppo</CardTitle>
+        <CardTitle className="text-base mb-4">{t("cassa.groupBalances")}</CardTitle>
         <ul className="space-y-3">
           {liveBalances.map((b) => (
             <li key={b.user_id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-3 border-b border-glass-border last:border-0">
               <div className="min-w-0">
                 <p className="font-medium">{b.display_name}</p>
-                <p className="text-xs text-cream/50">Anticipato {formatEuro(b.paid)} · Quota {formatEuro(finance.perPerson)}</p>
+                <p className="text-xs text-cream/50">
+                  {t("common.advancedAndShare", {
+                    paid: formatEuro(b.paid),
+                    share: formatEuro(finance.perPerson),
+                  })}
+                </p>
               </div>
               <div className={`flex items-center gap-1 text-sm font-semibold shrink-0 ${b.balance >= 0 ? "text-green-400" : "text-red-300"}`}>
                 {b.balance >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                 {b.balance >= 0
-                  ? `Riceve ${formatEuro(b.balance)}`
-                  : `Deve ${formatEuro(Math.abs(b.balance))}`}
+                  ? t("common.receives", { amount: formatEuro(b.balance) })
+                  : t("common.owes", { amount: formatEuro(Math.abs(b.balance)) })}
               </div>
             </li>
           ))}
@@ -184,10 +191,10 @@ export function CassaPageContent({
       </Card>
 
       <Card>
-        <CardTitle className="text-base mb-4">Registra un pagamento</CardTitle>
+        <CardTitle className="text-base mb-4">{t("cassa.registerPayment")}</CardTitle>
         <form onSubmit={addPayment} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
           <div>
-            <Label>Chi ha pagato</Label>
+            <Label>{t("cassa.whoPaid")}</Label>
             <Select value={userId} onChange={(e) => setUserId(e.target.value)}>
               {members.map((m) => (
                 <option key={m.user_id} value={m.user_id}>{m.display_name}</option>
@@ -195,20 +202,20 @@ export function CassaPageContent({
             </Select>
           </div>
           <div>
-            <Label>Importo €</Label>
+            <Label>{t("common.amountEuro")}</Label>
             <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
           </div>
           <div>
-            <Label>Per cosa</Label>
-            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Spesa, griglia..." />
+            <Label>{t("common.forWhat")}</Label>
+            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t("cassa.forWhatPlaceholder")} />
           </div>
-          <Button type="submit" className="w-full sm:w-auto"><Plus className="w-4 h-4" /> Aggiungi</Button>
+          <Button type="submit" className="w-full sm:w-auto"><Plus className="w-4 h-4" /> {t("common.add")}</Button>
         </form>
       </Card>
 
       {payments.length > 0 && (
         <Card>
-          <CardTitle className="text-base mb-3">Storico pagamenti</CardTitle>
+          <CardTitle className="text-base mb-3">{t("cassa.paymentHistory")}</CardTitle>
 
           {/* Mobile cards */}
           <ul className="md:hidden space-y-2">
@@ -221,8 +228,8 @@ export function CassaPageContent({
                         <option key={m.user_id} value={m.user_id}>{m.display_name}</option>
                       ))}
                     </Select>
-                    <Input value={editLabel} onChange={(e) => setEditLabel(e.target.value)} className="text-sm" placeholder="Per cosa" />
-                    <Input type="number" step="0.01" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} className="text-sm" placeholder="Importo €" />
+                    <Input value={editLabel} onChange={(e) => setEditLabel(e.target.value)} className="text-sm" placeholder={t("common.forWhat")} />
+                    <Input type="number" step="0.01" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} className="text-sm" placeholder={t("common.amountEuro")} />
                     <div className="flex justify-end">
                       <ItemActions editing onEdit={() => {}} onDelete={() => deletePayment(p.id)} onSave={saveEdit} onCancel={cancelEdit} />
                     </div>
@@ -231,7 +238,7 @@ export function CassaPageContent({
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-medium">{name(p.user_id)}</p>
-                      <p className="text-sm text-cream/70 truncate">{p.label || "—"}</p>
+                      <p className="text-sm text-cream/70 truncate">{p.label || t("common.dash")}</p>
                       <p className="text-ember font-medium mt-1">{formatEuro(Number(p.amount))}</p>
                     </div>
                     <ItemActions onEdit={() => startEdit(p)} onDelete={() => deletePayment(p.id)} />
@@ -246,9 +253,9 @@ export function CassaPageContent({
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-cream/50 border-b border-glass-border">
-                  <th className="text-left py-2">Chi</th>
-                  <th className="text-left py-2">Cosa</th>
-                  <th className="text-right py-2">€</th>
+                  <th className="text-left py-2">{t("common.who")}</th>
+                  <th className="text-left py-2">{t("common.what")}</th>
+                  <th className="text-right py-2">{t("cassa.tableEuro")}</th>
                   <th className="text-right py-2 w-20"></th>
                 </tr>
               </thead>
@@ -283,7 +290,7 @@ export function CassaPageContent({
                     ) : (
                       <>
                         <td className="py-2">{name(p.user_id)}</td>
-                        <td className="py-2 text-cream/70">{p.label || "—"}</td>
+                        <td className="py-2 text-cream/70">{p.label || t("common.dash")}</td>
                         <td className="py-2 text-right text-ember">{formatEuro(Number(p.amount))}</td>
                         <td className="py-2 text-right">
                           <ItemActions

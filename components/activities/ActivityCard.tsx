@@ -6,11 +6,14 @@ import { createClient } from "@/lib/supabase/client";
 import { Input, Label, Textarea, Select } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
 import { ItemActions } from "@/components/ui/ItemActions";
-import { formatEuro, cn } from "@/lib/utils";
-import { formatItalianDateShort } from "@/lib/dates";
+import { cn } from "@/lib/utils";
+import { formatDateShort } from "@/lib/dates";
 import { formatActivitySchedule } from "@/lib/activity-dates";
-import { PHASE_LABELS, TRIP_PHASES } from "@/lib/trip-phases";
+import { TRIP_PHASES } from "@/lib/trip-phases";
 import { normalizeMapLink } from "@/lib/google-maps";
+import type { Locale } from "@/lib/i18n/config";
+import { useFormatEuro, useTranslations } from "@/lib/i18n/client";
+import { getActivityDifficultyOptions, getPhaseLabel } from "@/lib/i18n/enums";
 import type {
   ActivityWithDetails,
   ActivityDifficulty,
@@ -19,8 +22,6 @@ import type {
   TripPhase,
 } from "@/lib/types";
 
-const difficulties: ActivityDifficulty[] = ["facile", "media", "difficile"];
-
 const PHASE_ICONS: Record<TripPhase, typeof Car> = {
   partenza: Car,
   soggiorno: Tent,
@@ -28,9 +29,9 @@ const PHASE_ICONS: Record<TripPhase, typeof Car> = {
   generale: Clock,
 };
 
-function formatScheduleSlot(entry: ScheduleEntry) {
+function formatScheduleSlot(entry: ScheduleEntry, locale: Locale) {
   const datePart = entry.event_date
-    ? formatItalianDateShort(entry.event_date)
+    ? formatDateShort(entry.event_date, locale)
     : entry.day_label;
   const parts = [datePart, entry.time_note].filter(Boolean);
   return parts.join(" · ");
@@ -57,6 +58,9 @@ export function ActivityCard({
   compact = false,
   onChanged,
 }: ActivityCardProps) {
+  const { locale, t } = useTranslations();
+  const formatEuro = useFormatEuro();
+  const difficultyOptions = getActivityDifficultyOptions(t);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -77,7 +81,7 @@ export function ActivityCard({
 
   const timeSuggestions = scheduleEntries
     .filter((e) => e.entry_type === "timeline" && (e.phase ?? "soggiorno") === editPhase)
-    .map((e) => formatScheduleSlot(e));
+    .map((e) => formatScheduleSlot(e, locale));
 
   function startEdit() {
     setEditName(activity.name);
@@ -169,18 +173,18 @@ export function ActivityCard({
                   )}
                 >
                   <Icon className="w-3 h-3" />
-                  {PHASE_LABELS[p]}
+                  {getPhaseLabel(p, t)}
                 </button>
               );
             })}
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs">Nome</Label>
+              <Label className="text-xs">{t("activities.name")}</Label>
               <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="text-sm" />
             </div>
             <div>
-              <Label className="text-xs">Data</Label>
+              <Label className="text-xs">{t("activities.date")}</Label>
               <Input
                 type="date"
                 value={editEventDate}
@@ -191,11 +195,11 @@ export function ActivityCard({
               />
             </div>
             <div>
-              <Label className="text-xs">Orario</Label>
+              <Label className="text-xs">{t("activities.time")}</Label>
               <Input
                 value={editScheduledTime}
                 onChange={(e) => setEditScheduledTime(e.target.value)}
-                placeholder="Mattina, 19:45..."
+                placeholder={t("activities.timePlaceholder")}
                 className="text-sm"
               />
               {timeSuggestions.length > 0 && (
@@ -218,7 +222,7 @@ export function ActivityCard({
               )}
             </div>
             <div>
-              <Label className="text-xs">Costo €</Label>
+              <Label className="text-xs">{t("activities.costEuro")}</Label>
               <Input
                 type="number"
                 step="0.01"
@@ -228,22 +232,22 @@ export function ActivityCard({
               />
             </div>
             <div>
-              <Label className="text-xs">Difficoltà</Label>
+              <Label className="text-xs">{t("activities.difficulty")}</Label>
               <Select
                 value={editDifficulty}
                 onChange={(e) => setEditDifficulty(e.target.value as ActivityDifficulty)}
                 className="text-sm"
               >
-                {difficulties.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
+                {difficultyOptions.map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {d.label}
                   </option>
                 ))}
               </Select>
             </div>
           </div>
           <div>
-            <Label className="text-xs">Descrizione</Label>
+            <Label className="text-xs">{t("activities.description")}</Label>
             <Textarea
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
@@ -251,12 +255,12 @@ export function ActivityCard({
             />
           </div>
           <div>
-            <Label className="text-xs">Link Google Maps</Label>
+            <Label className="text-xs">{t("activities.mapsLink")}</Label>
             <Input
               type="url"
               value={editMapLink}
               onChange={(e) => setEditMapLink(e.target.value)}
-              placeholder="https://maps.google.com/..."
+              placeholder={t("activities.mapsLinkPlaceholder")}
               className="text-sm"
             />
           </div>
@@ -274,7 +278,8 @@ export function ActivityCard({
     );
   }
 
-  const scheduleLabel = formatActivitySchedule(activity);
+  const scheduleLabel = formatActivitySchedule(activity, locale);
+  const difficultyLabel = difficultyOptions.find((d) => d.value === activity.difficulty)?.label ?? activity.difficulty;
 
   return (
     <Card className={cn("border-moss/20", compact && "p-3")}>
@@ -290,12 +295,12 @@ export function ActivityCard({
               {activity.name}
             </h3>
             <span className="text-ember">{formatEuro(activity.estimated_cost)}</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-night/50 border border-glass-border capitalize">
-              {activity.difficulty}
+            <span className="text-xs px-2 py-0.5 rounded-full bg-night/50 border border-glass-border">
+              {difficultyLabel}
             </span>
             <span className="text-xs px-2 py-0.5 rounded-full bg-ember/10 border border-ember/20 text-ember/80 flex items-center gap-1">
               <PhaseIcon className="w-3 h-3" />
-              {PHASE_LABELS[activityPhase]}
+              {getPhaseLabel(activityPhase, t)}
             </span>
             {scheduleLabel && <span className="text-xs text-cream/50">{scheduleLabel}</span>}
           </div>
@@ -310,13 +315,13 @@ export function ActivityCard({
               className="inline-flex items-center gap-1.5 text-sm text-emerald-300/90 hover:text-emerald-200 mt-2"
             >
               <MapPin className="w-3.5 h-3.5" />
-              Apri posizione su Maps
+              {t("common.openMapsLocation")}
               <ExternalLink className="w-3 h-3 opacity-60" />
             </a>
           )}
           {avg && (
             <p className="text-sm text-amber-300 mt-1 flex items-center gap-1">
-              <Star className="w-3.5 h-3.5 fill-amber-300" /> Voto gruppo: {avg}/5
+              <Star className="w-3.5 h-3.5 fill-amber-300" /> {t("common.groupVote", { avg })}
             </p>
           )}
         </div>
@@ -329,13 +334,13 @@ export function ActivityCard({
         <>
           <div className="mt-3 grid sm:grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs">Responsabile</Label>
+              <Label className="text-xs">{t("activities.responsible")}</Label>
               <Select
                 value={activity.responsible ?? ""}
                 onChange={(e) => setResponsible(e.target.value)}
                 className="text-sm"
               >
-                <option value="">—</option>
+                <option value="">{t("common.dash")}</option>
                 {members.map((m) => (
                   <option key={m.user_id} value={m.user_id}>
                     {m.display_name}
@@ -344,7 +349,7 @@ export function ActivityCard({
               </Select>
             </div>
             <div>
-              <Label className="text-xs">Il tuo voto</Label>
+              <Label className="text-xs">{t("activities.yourVote")}</Label>
               <div className="flex gap-1 mt-1">
                 {[1, 2, 3, 4, 5].map((r) => (
                   <button
@@ -360,7 +365,7 @@ export function ActivityCard({
           </div>
 
           <div className="mt-3 pt-3 border-t border-glass-border">
-            <p className="text-xs text-cream/50 mb-2">Chi partecipa?</p>
+            <p className="text-xs text-cream/50 mb-2">{t("activities.whoParticipates")}</p>
             <div className="flex flex-wrap gap-2">
               {members.map((m) => {
                 const active = activity.activity_participants?.some((p) => p.user_id === m.user_id);

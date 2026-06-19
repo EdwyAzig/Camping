@@ -1,4 +1,10 @@
-import { tagToLabel, translateFoodType } from "./food-translations";
+import type { Locale } from "@/lib/i18n/config";
+import {
+  getProductFallbackName,
+  looksLikeLocale,
+  tagToLabel,
+  translateFoodType,
+} from "./food-translations";
 import type { ShoppingCategory } from "./types";
 
 export interface OffProduct {
@@ -17,8 +23,10 @@ interface OffApiProduct {
   code?: string;
   product_name?: string;
   product_name_it?: string;
+  product_name_ro?: string;
   generic_name?: string;
   generic_name_it?: string;
+  generic_name_ro?: string;
   brands?: string;
   image_front_small_url?: string;
   image_front_url?: string;
@@ -35,7 +43,7 @@ interface OffApiResponse {
 }
 
 const OFF_FIELDS =
-  "code,product_name,product_name_it,generic_name,generic_name_it,brands,image_front_small_url,image_front_url,image_small_url,image_thumb_url,image_url,quantity,categories_tags";
+  "code,product_name,product_name_it,product_name_ro,generic_name,generic_name_it,generic_name_ro,brands,image_front_small_url,image_front_url,image_small_url,image_thumb_url,image_url,quantity,categories_tags";
 
 function pickStr(...values: (string | undefined | null)[]): string | null {
   for (const v of values) {
@@ -48,6 +56,7 @@ function pickStr(...values: (string | undefined | null)[]): string | null {
 function mergeProducts(world?: OffApiProduct, it?: OffApiProduct): OffApiProduct {
   return {
     product_name_it: pickStr(it?.product_name_it, it?.product_name) ?? undefined,
+    product_name_ro: pickStr(it?.product_name_ro, world?.product_name_ro) ?? undefined,
     product_name: pickStr(
       it?.product_name_it,
       it?.product_name,
@@ -57,6 +66,7 @@ function mergeProducts(world?: OffApiProduct, it?: OffApiProduct): OffApiProduct
       it?.generic_name
     ) ?? undefined,
     generic_name_it: pickStr(it?.generic_name_it, it?.generic_name) ?? undefined,
+    generic_name_ro: pickStr(it?.generic_name_ro, world?.generic_name_ro) ?? undefined,
     generic_name: pickStr(world?.generic_name, it?.generic_name) ?? undefined,
     brands: pickStr(world?.brands, it?.brands) ?? undefined,
     image_front_small_url: pickStr(
@@ -113,50 +123,80 @@ export function mapOffCategory(categoriesTags: string[] | undefined): ShoppingCa
   return "altro";
 }
 
-export function extractFoodType(categoriesTags: string[] | undefined): string | null {
+const TAG_PREFIX_BY_LOCALE: Record<Locale, string> = {
+  it: "it:",
+  en: "en:",
+  ro: "ro:",
+};
+
+export function extractFoodType(
+  categoriesTags: string[] | undefined,
+  locale: Locale = "it"
+): string | null {
   if (!categoriesTags?.length) return null;
 
-  const itTag = categoriesTags.find((t) => t.startsWith("it:"));
-  if (itTag) {
-    const label = tagToLabel(itTag);
+  const preferred = TAG_PREFIX_BY_LOCALE[locale];
+  const preferredTag = categoriesTags.find((t) => t.startsWith(preferred));
+  if (preferredTag) {
+    const label = tagToLabel(preferredTag, locale);
     if (label) return label;
   }
 
-  for (const tag of categoriesTags) {
-    if (tag.startsWith("en:")) {
-      const label = tagToLabel(tag);
-      if (label) return label;
+  const fallbackOrder = locale === "it"
+    ? ["it:", "en:", "ro:"]
+    : locale === "ro"
+      ? ["ro:", "en:", "it:"]
+      : ["en:", "it:", "ro:"];
+
+  for (const prefix of fallbackOrder) {
+    for (const tag of categoriesTags) {
+      if (tag.startsWith(prefix)) {
+        const label = tagToLabel(tag, locale);
+        if (label) return label;
+      }
     }
   }
 
   for (const tag of categoriesTags.slice(0, 8)) {
-    const label = tagToLabel(tag);
+    const label = tagToLabel(tag, locale);
     if (label && !["Aliments", "Products", "Foods"].includes(label)) return label;
   }
 
   return null;
 }
 
-function pickProductName(p: OffApiProduct, barcode: string): string {
-  const raw = pickStr(
-    p.product_name_it,
-    p.product_name,
-    p.generic_name_it,
-    p.generic_name
-  );
+function pickProductName(p: OffApiProduct, barcode: string, locale: Locale): string {
+  const namesByLocale: Record<Locale, (string | undefined | null)[]> = {
+    it: [p.product_name_it, p.product_name, p.generic_name_it, p.generic_name],
+    en: [p.product_name, p.generic_name, p.product_name_it, p.generic_name_it],
+    ro: [p.product_name_ro, p.product_name, p.generic_name_ro, p.generic_name],
+  };
+
+  for (const candidate of namesByLocale[locale]) {
+    const raw = candidate?.trim();
+    if (!raw) continue;
+    if (looksLikeLocale(raw, locale) || locale === "en") return raw;
+  }
+
+  const raw = pickStr(...namesByLocale[locale]);
   if (raw) {
-    const translated = translateFoodType(raw.toLowerCase());
+    const translated = translateFoodType(raw.toLowerCase(), locale);
     return translated && translated !== raw.toLowerCase() ? translated : raw;
   }
+
   const brand = p.brands?.split(",")[0]?.trim();
   if (brand) return brand;
-  return `Prodotto ${barcode}`;
+  return getProductFallbackName(barcode, locale);
 }
 
-export function parseOffProduct(barcode: string, data: OffApiResponse): OffProduct | null {
+export function parseOffProduct(
+  barcode: string,
+  data: OffApiResponse,
+  locale: Locale = "it"
+): OffProduct | null {
   if (data.status !== 1 || !data.product) return null;
   const p = data.product;
-  const name = pickProductName(p, barcode);
+  const name = pickProductName(p, barcode, locale);
   const packSize = p.quantity?.trim() || null;
 
   return {
@@ -164,7 +204,7 @@ export function parseOffProduct(barcode: string, data: OffApiResponse): OffProdu
     name,
     brand: p.brands?.split(",")[0]?.trim() || null,
     imageUrl: pickStr(p.image_front_small_url, p.image_url),
-    foodType: extractFoodType(p.categories_tags),
+    foodType: extractFoodType(p.categories_tags, locale),
     packSize,
     quantity: "1",
     category: mapOffCategory(p.categories_tags),
@@ -196,7 +236,10 @@ const OFF_MIRRORS = [
   "https://fr.openfoodfacts.org",
 ];
 
-export async function fetchOffProduct(barcode: string): Promise<OffProduct | null> {
+export async function fetchOffProduct(
+  barcode: string,
+  locale: Locale = "it"
+): Promise<OffProduct | null> {
   const results = await Promise.all(OFF_MIRRORS.map((base) => fetchOffEndpoint(base, barcode)));
   const hits = results.filter((r) => r?.status === 1 && r.product);
 
@@ -207,10 +250,9 @@ export async function fetchOffProduct(barcode: string): Promise<OffProduct | nul
     merged = mergeProducts(merged, hit!.product);
   }
 
-  return parseOffProduct(barcode, { status: 1, product: merged });
+  return parseOffProduct(barcode, { status: 1, product: merged }, locale);
 }
 
-/** Per fallback client-side se l'API non risponde */
 export function emptyOffProduct(barcode: string): OffProduct {
   return {
     barcode,
@@ -225,7 +267,10 @@ export function emptyOffProduct(barcode: string): OffProduct {
   };
 }
 
-export async function lookupBarcodeProduct(barcode: string): Promise<OffProduct> {
+export async function lookupBarcodeProduct(
+  barcode: string,
+  locale: Locale = "it"
+): Promise<OffProduct> {
   const cleaned = barcode.replace(/\D/g, "");
   const empty = emptyOffProduct(cleaned);
 
@@ -240,7 +285,7 @@ export async function lookupBarcodeProduct(barcode: string): Promise<OffProduct>
   }
 
   try {
-    const direct = await fetchOffProduct(cleaned);
+    const direct = await fetchOffProduct(cleaned, locale);
     if (direct) return direct;
   } catch {
     // ignora

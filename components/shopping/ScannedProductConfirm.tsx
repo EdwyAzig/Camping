@@ -1,20 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Minus, Plus, ScanBarcode, X, Sparkles } from "lucide-react";
+import { Minus, Plus, ScanBarcode, X, Sparkles, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Textarea } from "@/components/ui/Input";
 import { ProductThumb } from "@/components/shopping/ProductThumb";
 import type { OffProduct } from "@/lib/open-food-facts";
 import { calcLineTotal, parseQuantityCount } from "@/lib/shopping-utils";
-import { formatEuro, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { useTranslations, useFormatEuro } from "@/lib/i18n/client";
+import { getShoppingCategoryOptions } from "@/lib/i18n/enums";
 import type { ShoppingCategory, ShoppingItem } from "@/lib/types";
-
-const categories: { value: ShoppingCategory; label: string }[] = [
-  { value: "cibo", label: "Cibo" },
-  { value: "bevande", label: "Bevande" },
-  { value: "altro", label: "Altro" },
-];
 
 function QtyStepper({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const n = parseQuantityCount(value);
@@ -47,56 +43,72 @@ function QtyStepper({ value, onChange }: { value: string; onChange: (v: string) 
 
 export function ScannedProductConfirm({
   product,
+  plannedItem,
   existing,
   onConfirm,
   onScanAgain,
   onCancel,
 }: {
   product: OffProduct;
-  existing: ShoppingItem | null;
+  plannedItem?: ShoppingItem | null;
+  existing?: ShoppingItem | null;
   onConfirm: (data: {
     name: string;
     category: ShoppingCategory;
     foodType: string;
     quantity: string;
     unitPrice: string;
+    packSize: string;
     incrementExisting: boolean;
   }) => void | Promise<void>;
   onScanAgain: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslations();
+  const formatEuro = useFormatEuro();
+  const categories = getShoppingCategoryOptions(t);
+  const isPurchase = !!plannedItem;
+
   const [name, setName] = useState(product.name);
-  const [category, setCategory] = useState(product.category);
-  const [foodType, setFoodType] = useState(product.foodType ?? "");
-  const [quantity, setQuantity] = useState("1");
+  const [category, setCategory] = useState(plannedItem?.category ?? product.category);
+  const [foodType, setFoodType] = useState(plannedItem?.food_type ?? product.foodType ?? "");
+  const [quantity, setQuantity] = useState(
+    plannedItem ? String(parseQuantityCount(plannedItem.quantity)) : "1"
+  );
   const [unitPrice, setUnitPrice] = useState("");
+  const [packSize, setPackSize] = useState(product.packSize ?? "");
   const [increment, setIncrement] = useState(true);
 
   useEffect(() => {
-    setName(product.name);
-    setCategory(product.category);
-    setFoodType(product.foodType ?? "");
-    setQuantity("1");
+    setName(product.name || plannedItem?.name || "");
+    setCategory(plannedItem?.category ?? product.category);
+    setFoodType(plannedItem?.food_type ?? product.foodType ?? "");
+    setQuantity(plannedItem ? String(parseQuantityCount(plannedItem.quantity)) : "1");
     setUnitPrice("");
+    setPackSize(product.packSize ?? "");
     setIncrement(true);
-  }, [product]);
+  }, [product, plannedItem]);
 
   const qty = parseQuantityCount(quantity);
   const unit = unitPrice ? parseFloat(unitPrice) : null;
   const total = calcLineTotal(qty, unit);
   const notFound = product.found === false || (!product.name && !product.imageUrl);
+  const packSizeFromOff = !!product.packSize;
 
   return (
     <div className="fixed inset-0 z-[110] bg-night/95 backdrop-blur-md flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 shrink-0 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-glass-border/60">
         <div>
-          <p className="text-[10px] uppercase tracking-widest text-cream/40">Open Food Facts</p>
-          <h2 className="font-[family-name:var(--font-fraunces)] text-lg text-cream">Conferma prodotto</h2>
+          <p className="text-[10px] uppercase tracking-widest text-cream/40">{t("common.openFoodFacts")}</p>
+          <h2 className="font-[family-name:var(--font-fraunces)] text-lg text-cream">
+            {isPurchase ? t("shopping.buyingPlanned", { name: plannedItem!.name }) : t("shopping.confirmTitle")}
+          </h2>
         </div>
         <button
           type="button"
           onClick={onCancel}
           className="p-2 rounded-xl bg-white/5 text-cream/60 hover:text-cream"
+          aria-label={t("common.close")}
         >
           <X className="w-5 h-5" />
         </button>
@@ -104,28 +116,39 @@ export function ScannedProductConfirm({
 
       <div className="flex-1 overflow-y-auto overscroll-contain">
         <div className="px-4 pt-4 pb-28 max-w-lg mx-auto w-full space-y-5">
+          {isPurchase && (
+            <div className="flex items-center gap-2 rounded-xl bg-ember/10 border border-ember/25 px-4 py-3 text-sm text-cream/80">
+              <ListChecks className="w-4 h-4 text-ember shrink-0" />
+              <span>
+                {t("shopping.planHint")}
+              </span>
+            </div>
+          )}
+
           {notFound ? (
             <div className="rounded-xl bg-amber-950/50 border border-amber-700/40 px-4 py-3 text-sm text-amber-100">
-              Prodotto non in database — inserisci il nome manualmente.
+              {t("shopping.notInDatabase")}
               <span className="block text-xs text-amber-200/60 mt-1 font-mono">{product.barcode}</span>
             </div>
           ) : (
             <div className="flex items-center gap-2 text-xs text-green-300/90">
               <Sparkles className="w-3.5 h-3.5" />
-              Dati riconosciuti automaticamente
+              {t("shopping.autoRecognized")}
             </div>
           )}
 
           <div className="rounded-2xl overflow-hidden border border-glass-border bg-night/60">
-            <ProductThumb src={product.imageUrl} alt={name || "Prodotto"} size="hero" />
+            <ProductThumb src={product.imageUrl} alt={name || t("common.productFallback")} size="hero" />
             <div className="p-4 space-y-1">
               <h3 className="font-[family-name:var(--font-fraunces)] text-xl text-cream leading-snug">
-                {name || product.name || "Nuovo prodotto"}
+                {name || product.name || plannedItem?.name || t("common.newProduct")}
               </h3>
               {product.brand && <p className="text-sm text-cream/55">{product.brand}</p>}
               <div className="flex flex-wrap gap-2 pt-1">
-                {product.packSize && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-white/5 text-cream/50">{product.packSize}</span>
+                {(packSizeFromOff ? product.packSize : packSize) && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-white/5 text-cream/50">
+                    {packSizeFromOff ? product.packSize : packSize}
+                  </span>
                 )}
                 {foodType && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-ember/10 text-ember">{foodType}</span>
@@ -134,23 +157,23 @@ export function ScannedProductConfirm({
             </div>
           </div>
 
-          {existing && (
+          {!isPurchase && existing && (
             <div className="rounded-xl bg-amber-900/20 border border-amber-700/30 px-4 py-3 text-sm text-amber-100">
-              Già in lista ({parseQuantityCount(existing.quantity)}×)
+              {t("common.alreadyInList", { quantity: parseQuantityCount(existing.quantity) })}
               <label className="flex items-center gap-2 mt-2 cursor-pointer">
                 <input type="checkbox" checked={increment} onChange={(e) => setIncrement(e.target.checked)} className="rounded accent-ember" />
-                Aggiungi alla quantità esistente
+                {t("shopping.incrementExisting")}
               </label>
             </div>
           )}
 
           <div className="space-y-4">
             <div>
-              <Label>Nome prodotto</Label>
+              <Label>{t("shopping.confirmProductName")}</Label>
               <Textarea
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Nome del prodotto"
+                placeholder={t("shopping.confirmProductNamePlaceholder")}
                 rows={2}
                 className="min-h-[72px] text-base leading-snug resize-none"
                 autoFocus={notFound}
@@ -158,7 +181,7 @@ export function ScannedProductConfirm({
             </div>
 
             <div>
-              <Label className="mb-2">Categoria</Label>
+              <Label className="mb-2">{t("shopping.confirmCategory")}</Label>
               <div className="flex gap-2">
                 {categories.map((c) => (
                   <button
@@ -179,24 +202,35 @@ export function ScannedProductConfirm({
             </div>
 
             <div>
-              <Label>Tipo (opzionale)</Label>
-              <Input value={foodType} onChange={(e) => setFoodType(e.target.value)} placeholder="Snack, latticini…" />
+              <Label>{t("shopping.typeOptional")}</Label>
+              <Input value={foodType} onChange={(e) => setFoodType(e.target.value)} placeholder={t("shopping.confirmTypePlaceholder")} />
             </div>
+
+            {!packSizeFromOff && (
+              <div>
+                <Label>{t("shopping.packSizeLabel")}</Label>
+                <Input
+                  value={packSize}
+                  onChange={(e) => setPackSize(e.target.value)}
+                  placeholder={t("shopping.packSizePlaceholder")}
+                />
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <Label className="mb-2">Quantità</Label>
+                <Label className="mb-2">{t("shopping.confirmQuantity")}</Label>
                 <QtyStepper value={quantity} onChange={setQuantity} />
               </div>
               <div>
-                <Label>Prezzo cad. €</Label>
+                <Label>{t("shopping.confirmUnitPrice")}</Label>
                 <Input
                   type="number"
                   step="0.01"
                   inputMode="decimal"
                   value={unitPrice}
                   onChange={(e) => setUnitPrice(e.target.value)}
-                  placeholder="0.00"
+                  placeholder={t("shopping.confirmPricePlaceholder")}
                   className="text-lg py-3 mt-1"
                 />
               </div>
@@ -204,7 +238,7 @@ export function ScannedProductConfirm({
 
             {total != null && total > 0 && (
               <div className="rounded-xl bg-ember/10 border border-ember/25 px-4 py-3 flex justify-between items-center">
-                <span className="text-sm text-cream/60">Totale riga</span>
+                <span className="text-sm text-cream/60">{t("common.rowTotal")}</span>
                 <span className="text-xl font-[family-name:var(--font-fraunces)] text-ember">{formatEuro(total)}</span>
               </div>
             )}
@@ -219,25 +253,30 @@ export function ScannedProductConfirm({
           className="w-full max-w-lg mx-auto"
           onClick={() =>
             onConfirm({
-              name: name.trim() || product.name,
+              name: name.trim() || product.name || plannedItem?.name || "",
               category,
               foodType,
               quantity,
               unitPrice,
-              incrementExisting: !!existing && increment,
+              packSize: packSizeFromOff ? (product.packSize ?? "") : packSize.trim(),
+              incrementExisting: !isPurchase && !!existing && increment,
             })
           }
-          disabled={!name.trim() && !product.name.trim() && !existing}
+          disabled={!name.trim() && !product.name.trim() && !plannedItem?.name && !existing}
         >
           <Plus className="w-5 h-5" />
-          {existing && increment ? "Aggiorna quantità" : "Aggiungi alla lista"}
+          {isPurchase
+            ? t("shopping.confirmPurchase")
+            : existing && increment
+              ? t("shopping.updateQuantity")
+              : t("shopping.addToList")}
         </Button>
         <button
           type="button"
           onClick={onScanAgain}
           className="w-full py-2 text-sm text-cream/45 hover:text-cream flex items-center justify-center gap-1.5"
         >
-          <ScanBarcode className="w-4 h-4" /> Scansiona un altro
+          <ScanBarcode className="w-4 h-4" /> {t("shopping.scanAnother")}
         </button>
       </div>
     </div>

@@ -1,11 +1,12 @@
-import { formatItalianDateShort } from "@/lib/dates";
+import type { Locale } from "@/lib/i18n/config";
+import { formatDateShort } from "@/lib/dates";
 import type { Activity, ScheduleEntry } from "@/lib/types";
 
 export const NO_ACTIVITY_DATE = "__no_date__";
 
-export function formatActivitySchedule(activity: Activity): string {
+export function formatActivitySchedule(activity: Activity, locale: Locale = "it"): string {
   if (activity.event_date) {
-    const datePart = formatItalianDateShort(activity.event_date);
+    const datePart = formatDateShort(activity.event_date, locale);
     return activity.scheduled_time ? `${datePart} · ${activity.scheduled_time}` : datePart;
   }
   return activity.scheduled_time;

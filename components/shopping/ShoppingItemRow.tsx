@@ -1,17 +1,14 @@
 "use client";
 
+import { ScanBarcode } from "lucide-react";
 import { Input, Select } from "@/components/ui/Input";
 import { ItemActions } from "@/components/ui/ItemActions";
 import { ProductThumb } from "@/components/shopping/ProductThumb";
 import { calcLineTotal, deriveUnitPrice, parseQuantityCount } from "@/lib/shopping-utils";
-import { formatEuro, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { useTranslations, useFormatEuro } from "@/lib/i18n/client";
+import { getShoppingCategoryLabel, getShoppingCategoryOptions } from "@/lib/i18n/enums";
 import type { ShoppingItem, ShoppingCategory, TripMember } from "@/lib/types";
-
-const categories: { value: ShoppingCategory; label: string }[] = [
-  { value: "cibo", label: "Cibo" },
-  { value: "bevande", label: "Bevande" },
-  { value: "altro", label: "Altro" },
-];
 
 export interface ItemEditState {
   name: string;
@@ -46,6 +43,7 @@ export function ShoppingItemRow({
   onToggleBought,
   onAssign,
   onEditChange,
+  onScan,
 }: {
   item: ShoppingItem;
   members: TripMember[];
@@ -58,7 +56,12 @@ export function ShoppingItemRow({
   onToggleBought: () => void;
   onAssign: (userId: string) => void;
   onEditChange: (patch: Partial<ItemEditState>) => void;
+  onScan?: () => void;
 }) {
+  const { t } = useTranslations();
+  const formatEuro = useFormatEuro();
+  const categories = getShoppingCategoryOptions(t);
+
   if (editing) {
     const editQty = parseQuantityCount(edit.quantity);
     const editUnit = edit.unit_price ? parseFloat(edit.unit_price) : null;
@@ -71,13 +74,13 @@ export function ShoppingItemRow({
             <Input
               value={edit.name}
               onChange={(e) => onEditChange({ name: e.target.value })}
-              placeholder="Nome prodotto"
+              placeholder={t("shopping.editProductName")}
               className="text-sm sm:col-span-2"
             />
             <Input
               value={edit.food_type}
               onChange={(e) => onEditChange({ food_type: e.target.value })}
-              placeholder="Tipo cibo"
+              placeholder={t("shopping.editFoodType")}
               className="text-sm"
             />
             <Select
@@ -95,7 +98,7 @@ export function ShoppingItemRow({
                 min={1}
                 value={edit.quantity}
                 onChange={(e) => onEditChange({ quantity: e.target.value })}
-                placeholder="Qtà"
+                placeholder={t("shopping.editQty")}
                 className="text-sm w-16"
               />
               <span className="text-xs text-cream/40">×</span>
@@ -104,7 +107,7 @@ export function ShoppingItemRow({
                 step="0.01"
                 value={edit.unit_price}
                 onChange={(e) => onEditChange({ unit_price: e.target.value })}
-                placeholder="€ cad."
+                placeholder={t("shopping.editUnitPrice")}
                 className="text-sm flex-1"
               />
               <span className="text-sm text-ember font-medium whitespace-nowrap">
@@ -117,12 +120,12 @@ export function ShoppingItemRow({
                 step="0.01"
                 value={edit.actual_price}
                 onChange={(e) => onEditChange({ actual_price: e.target.value })}
-                placeholder="Pagato totale €"
+                placeholder={t("shopping.editPaidTotal")}
                 className="text-sm"
               />
             )}
             {item.pack_size && (
-              <p className="text-xs text-cream/40 sm:col-span-2">Confezione: {item.pack_size}</p>
+              <p className="text-xs text-cream/40 sm:col-span-2">{t("common.packSize", { size: item.pack_size })}</p>
             )}
           </div>
           <div className="flex justify-end mt-2">
@@ -161,22 +164,22 @@ export function ShoppingItemRow({
         </div>
       </td>
       <td className="p-3 text-cream/60 text-xs whitespace-nowrap">
-        {item.food_type ?? categories.find((c) => c.value === item.category)?.label ?? "—"}
+        {item.food_type ?? getShoppingCategoryLabel(item.category, t)}
       </td>
       <td className="p-3 text-center whitespace-nowrap">
         <span className="font-medium">{qty}</span>
         {unitPrice != null && (
-          <p className="text-[10px] text-cream/40">{formatEuro(unitPrice)} cad.</p>
+          <p className="text-[10px] text-cream/40">{t("common.perUnit", { price: formatEuro(unitPrice) })}</p>
         )}
       </td>
       <td className="p-3 text-right text-ember font-medium whitespace-nowrap">
-        {formatEuro(lineTotal)}
+        {lineTotal != null ? formatEuro(lineTotal) : t("common.dash")}
       </td>
       <td className="p-3 text-right whitespace-nowrap">
         {item.bought ? (
           <span className="text-green-400">{formatEuro(item.actual_price ?? lineTotal)}</span>
         ) : (
-          <span className="text-cream/30">—</span>
+          <span className="text-cream/30">{t("common.dash")}</span>
         )}
       </td>
       <td className="p-3">
@@ -185,14 +188,26 @@ export function ShoppingItemRow({
           value={item.assigned_to ?? ""}
           onChange={(e) => onAssign(e.target.value)}
         >
-          <option value="">—</option>
+          <option value="">{t("common.dash")}</option>
           {members.map((m) => (
             <option key={m.user_id} value={m.user_id}>{m.display_name}</option>
           ))}
         </Select>
       </td>
       <td className="p-3">
-        <ItemActions onEdit={onEdit} onDelete={onDelete} />
+        <div className="flex items-center gap-1">
+          {!item.bought && onScan && (
+            <button
+              type="button"
+              onClick={onScan}
+              title={t("shopping.scanToBuy")}
+              className="p-2 rounded-lg text-ember hover:bg-ember/10"
+            >
+              <ScanBarcode className="w-4 h-4" />
+            </button>
+          )}
+          <ItemActions onEdit={onEdit} onDelete={onDelete} />
+        </div>
       </td>
     </tr>
   );

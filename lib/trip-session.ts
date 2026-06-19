@@ -1,4 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Locale } from "@/lib/i18n/config";
+import { getMessages } from "@/lib/i18n/messages";
+import { createTranslator } from "@/lib/i18n/translate";
 import { mapSupabaseError } from "@/lib/supabase/errors";
 
 export type TripSessionPreview = {
@@ -12,13 +15,11 @@ export type TripSessionResult =
   | { ok: false; error: string };
 
 export async function getDisplayNameFromUser(
-  user: { user_metadata?: { display_name?: string }; email?: string | null } | null
+  user: { user_metadata?: { display_name?: string }; email?: string | null } | null,
+  locale: Locale = "it"
 ): Promise<string> {
-  return (
-    user?.user_metadata?.display_name ||
-    user?.email?.split("@")[0] ||
-    "Campeggiatore"
-  );
+  const fallback = createTranslator(getMessages(locale))("common.defaultCamperName");
+  return user?.user_metadata?.display_name || user?.email?.split("@")[0] || fallback;
 }
 
 export async function previewTripByInviteCode(
@@ -27,7 +28,7 @@ export async function previewTripByInviteCode(
 ): Promise<{ trip: TripSessionPreview | null; error?: string }> {
   const normalized = code.trim().toUpperCase();
   if (!normalized) {
-    return { trip: null, error: "Inserisci un codice" };
+    return { trip: null, error: "errors.enterCode" };
   }
 
   const { data, error } = await supabase.rpc("get_trip_by_invite", {
@@ -39,7 +40,7 @@ export async function previewTripByInviteCode(
   }
 
   if (!data?.length) {
-    return { trip: null, error: "Codice invito non trovato" };
+    return { trip: null, error: "errors.inviteNotFound" };
   }
 
   return { trip: data[0] as TripSessionPreview };
@@ -48,11 +49,12 @@ export async function previewTripByInviteCode(
 export async function joinTripByCode(
   supabase: SupabaseClient,
   code: string,
-  displayName?: string
+  displayName?: string,
+  locale: Locale = "it"
 ): Promise<TripSessionResult> {
   const normalized = code.trim().toUpperCase();
   if (!normalized) {
-    return { ok: false, error: "Inserisci un codice" };
+    return { ok: false, error: "errors.enterCode" };
   }
 
   const {
@@ -60,10 +62,10 @@ export async function joinTripByCode(
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { ok: false, error: "Devi essere autenticato" };
+    return { ok: false, error: "errors.mustBeAuthenticated" };
   }
 
-  const name = displayName ?? (await getDisplayNameFromUser(user));
+  const name = displayName ?? (await getDisplayNameFromUser(user, locale));
 
   const { data: tripId, error } = await supabase.rpc("join_trip_by_code", {
     code: normalized,
@@ -72,7 +74,7 @@ export async function joinTripByCode(
 
   if (error) {
     const message = error.message.includes("Codice invito non trovato")
-      ? "Codice invito non trovato"
+      ? "errors.inviteNotFound"
       : mapSupabaseError(error.message, error.code);
     return { ok: false, error: message };
   }

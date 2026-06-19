@@ -97,6 +97,16 @@ export interface Equipment {
   created_at: string;
 }
 
+export interface PersonalPackingItem {
+  id: string;
+  trip_id: string;
+  user_id: string;
+  item_key: string;
+  custom_label: string | null;
+  checked: boolean;
+  created_at: string;
+}
+
 export interface Activity {
   id: string;
   trip_id: string;
@@ -138,11 +148,21 @@ export interface TripPayment {
   created_at: string;
 }
 
+export interface WeatherForecastDay {
+  date: string;
+  label: string;
+  tempMax: number;
+  tempMin: number;
+  icon: string;
+  description: string;
+}
+
 export interface WeatherInfo {
   temp: number;
   description: string;
   icon: string;
   wind: number;
+  forecast: WeatherForecastDay[];
 }
 
 export interface FinanceSummary {

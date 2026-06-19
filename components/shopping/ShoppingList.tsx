@@ -1,17 +1,16 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Plus, Flame, ScanBarcode, ChevronDown } from "lucide-react";
+import { Flame, ScanBarcode, ShoppingBag, CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimeTable } from "@/lib/hooks/useRealtimeTable";
-import { Button } from "@/components/ui/Button";
-import { Input, Label, Select } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/Progress";
 import { BarcodeScanner } from "@/components/shopping/BarcodeScanner";
 import { ScannedProductConfirm } from "@/components/shopping/ScannedProductConfirm";
 import { ShoppingItemCard } from "@/components/shopping/ShoppingItemCard";
+import { ShoppingPlanPanel } from "@/components/shopping/ShoppingPlanPanel";
 import {
   ShoppingItemRow,
   itemToEditState,
@@ -20,31 +19,65 @@ import {
 import { calcShoppingPaid, calcShoppingRemaining } from "@/lib/finance";
 import type { OffProduct } from "@/lib/open-food-facts";
 import { calcLineTotal, parseQuantityCount } from "@/lib/shopping-utils";
-import { formatEuro } from "@/lib/utils";
+import { useTranslations, useFormatEuro } from "@/lib/i18n/client";
+import { cn } from "@/lib/utils";
+import type { ParsedListItem } from "@/lib/shopping-list-parser";
 import type { ShoppingItem, ShoppingCategory, TripMember } from "@/lib/types";
 
-const categories: { value: ShoppingCategory; label: string }[] = [
-  { value: "cibo", label: "Cibo" },
-  { value: "bevande", label: "Bevande" },
-  { value: "altro", label: "Altro" },
-];
+type ScanConfirmData = {
+  name: string;
+  category: ShoppingCategory;
+  foodType: string;
+  quantity: string;
+  unitPrice: string;
+  packSize: string;
+  incrementExisting: boolean;
+};
+
+function SectionHeader({
+  title,
+  count,
+  variant,
+}: {
+  title: string;
+  count: number;
+  variant: "pending" | "done";
+}) {
+  const Icon = variant === "pending" ? ShoppingBag : CheckCircle2;
+  return (
+    <div className="flex items-center gap-2.5">
+      <Icon className={cn("w-4 h-4", variant === "pending" ? "text-ember" : "text-green-400/80")} />
+      <h2 className="font-[family-name:var(--font-fraunces)] text-base text-cream">{title}</h2>
+      <span
+        className={cn(
+          "text-xs font-medium px-2 py-0.5 rounded-full",
+          variant === "pending" ? "bg-ember/15 text-ember" : "bg-green-900/30 text-green-300"
+        )}
+      >
+        {count}
+      </span>
+    </div>
+  );
+}
 
 export function ShoppingList({ tripId, members, initialItems }: {
   tripId: string;
   members: TripMember[];
   initialItems: ShoppingItem[];
 }) {
+  const { t } = useTranslations();
+  const formatEuro = useFormatEuro();
+
   const [items, setItems] = useState(initialItems);
   const [name, setName] = useState("");
   const [category, setCategory] = useState<ShoppingCategory>("cibo");
   const [quantity, setQuantity] = useState("1");
-  const [unitPrice, setUnitPrice] = useState("");
   const [foodType, setFoodType] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanTarget, setScanTarget] = useState<ShoppingItem | null>(null);
   const [pendingProduct, setPendingProduct] = useState<OffProduct | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [edit, setEdit] = useState<ItemEditState | null>(null);
-  const [manualOpen, setManualOpen] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -54,19 +87,52 @@ export function ShoppingList({ tripId, members, initialItems }: {
 
   useRealtimeTable("shopping_items", tripId, load);
 
+  function startScan(item?: ShoppingItem) {
+    setScanTarget(item ?? null);
+    setScannerOpen(true);
+  }
+
   function handleDetected(product: OffProduct) {
     setScannerOpen(false);
     setPendingProduct(product);
   }
 
-  async function confirmScannedProduct(data: {
-    name: string;
-    category: ShoppingCategory;
-    foodType: string;
-    quantity: string;
-    unitPrice: string;
-    incrementExisting: boolean;
-  }) {
+  function buildProductPayload(product: OffProduct, data: ScanConfirmData) {
+    const qty = parseQuantityCount(data.quantity);
+    const unit = data.unitPrice ? parseFloat(data.unitPrice) : null;
+    const lineTotal = calcLineTotal(qty, unit);
+    return {
+      name: data.name.trim() || product.name || t("common.productWithBarcode", { barcode: product.barcode }),
+      category: data.category,
+      quantity: String(qty),
+      unit_price: unit,
+      estimated_price: lineTotal,
+      actual_price: lineTotal,
+      food_type: data.foodType.trim() || product.foodType || null,
+      brand: product.brand,
+      barcode: product.barcode,
+      image_url: product.imageUrl,
+      pack_size: data.packSize || product.packSize || null,
+      bought: true,
+      source: product.name ? "openfoodfacts" as const : "manual" as const,
+    };
+  }
+
+  async function fulfillPlannedItem(data: ScanConfirmData) {
+    if (!pendingProduct || !scanTarget) return;
+    const supabase = createClient();
+    const payload = buildProductPayload(pendingProduct, {
+      ...data,
+      name: data.name.trim() || pendingProduct.name || scanTarget.name,
+      foodType: data.foodType.trim() || pendingProduct.foodType || scanTarget.food_type || "",
+    });
+    await supabase.from("shopping_items").update(payload).eq("id", scanTarget.id);
+    setPendingProduct(null);
+    setScanTarget(null);
+    await load();
+  }
+
+  async function confirmUnplannedPurchase(data: ScanConfirmData) {
     if (!pendingProduct) return;
     const supabase = createClient();
     const existing = items.find((i) => i.barcode === pendingProduct.barcode && !i.bought);
@@ -76,30 +142,32 @@ export function ShoppingList({ tripId, members, initialItems }: {
     if (existing && data.incrementExisting) {
       const newQty = parseQuantityCount(existing.quantity) + qty;
       const useUnit = unit ?? existing.unit_price;
+      const lineTotal = calcLineTotal(newQty, useUnit);
       await supabase.from("shopping_items").update({
         quantity: String(newQty),
         unit_price: useUnit,
-        estimated_price: calcLineTotal(newQty, useUnit),
+        estimated_price: lineTotal,
+        actual_price: lineTotal,
+        bought: true,
       }).eq("id", existing.id);
     } else {
       await supabase.from("shopping_items").insert({
         trip_id: tripId,
-        name: data.name.trim() || pendingProduct.name || `Prodotto ${pendingProduct.barcode}`,
-        category: data.category,
-        quantity: String(qty),
-        unit_price: unit,
-        estimated_price: calcLineTotal(qty, unit),
-        food_type: data.foodType.trim() || pendingProduct.foodType,
-        brand: pendingProduct.brand,
-        barcode: pendingProduct.barcode,
-        image_url: pendingProduct.imageUrl,
-        pack_size: pendingProduct.packSize,
-        source: pendingProduct.name ? "openfoodfacts" : "manual",
+        ...buildProductPayload(pendingProduct, data),
       });
     }
 
     setPendingProduct(null);
+    setScanTarget(null);
     await load();
+  }
+
+  async function handleScanConfirm(data: ScanConfirmData) {
+    if (scanTarget) {
+      await fulfillPlannedItem(data);
+    } else {
+      await confirmUnplannedPurchase(data);
+    }
   }
 
   async function handleAdd(e: React.FormEvent) {
@@ -107,23 +175,41 @@ export function ShoppingList({ tripId, members, initialItems }: {
     if (!name.trim()) return;
     const supabase = createClient();
     const qty = parseQuantityCount(quantity);
-    const unit = unitPrice ? parseFloat(unitPrice) : null;
     await supabase.from("shopping_items").insert({
       trip_id: tripId,
       name: name.trim(),
       category,
       quantity: String(qty),
-      unit_price: unit,
-      estimated_price: calcLineTotal(qty, unit),
+      unit_price: null,
+      estimated_price: null,
       food_type: foodType.trim() || null,
       source: "manual",
+      bought: false,
     });
     setName("");
     setQuantity("1");
-    setUnitPrice("");
     setFoodType("");
     setCategory("cibo");
     load();
+  }
+
+  async function handlePasteAdd(parsed: ParsedListItem[]) {
+    if (!parsed.length) return;
+    const supabase = createClient();
+    await supabase.from("shopping_items").insert(
+      parsed.map((p) => ({
+        trip_id: tripId,
+        name: p.name,
+        category: p.category,
+        quantity: String(p.quantity),
+        unit_price: null,
+        estimated_price: null,
+        food_type: null,
+        source: "manual" as const,
+        bought: false,
+      }))
+    );
+    await load();
   }
 
   async function toggleBought(item: ShoppingItem) {
@@ -184,178 +270,161 @@ export function ShoppingList({ tripId, members, initialItems }: {
   const paid = calcShoppingPaid(items);
   const remaining = calcShoppingRemaining(items);
   const boughtCount = items.filter((i) => i.bought).length;
-  const manualTotal = calcLineTotal(parseQuantityCount(quantity), unitPrice ? parseFloat(unitPrice) : null);
-  const pendingExisting = pendingProduct
+  const progressPct = items.length ? Math.round((boughtCount / items.length) * 100) : 0;
+  const toBuy = items.filter((i) => !i.bought);
+  const bought = items.filter((i) => i.bought);
+  const pendingExisting = pendingProduct && !scanTarget
     ? items.find((i) => i.barcode === pendingProduct.barcode && !i.bought) ?? null
     : null;
 
+  const itemProps = (item: ShoppingItem) => ({
+    item,
+    members,
+    editing: editingId === item.id,
+    edit: edit ?? itemToEditState(item),
+    onEdit: () => startEdit(item),
+    onCancel: () => { setEditingId(null); setEdit(null); },
+    onSave: () => saveEdit(item),
+    onDelete: () => deleteItem(item.id),
+    onToggleBought: () => toggleBought(item),
+    onAssign: (uid: string) => assignItem(item.id, uid),
+    onEditChange: (patch: Partial<ItemEditState>) =>
+      setEdit((prev) => ({ ...(prev ?? itemToEditState(item)), ...patch })),
+    onScan: !item.bought ? () => startScan(item) : undefined,
+  });
+
+  const listTable = (listItems: ShoppingItem[]) => (
+    <Card gradient className="hidden md:block p-0 overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-night/40 text-cream/50 border-b border-glass-border">
+              <th className="p-3 w-8"></th>
+              <th className="text-left p-3">{t("shopping.tableProduct")}</th>
+              <th className="text-left p-3">{t("shopping.tableType")}</th>
+              <th className="text-center p-3">{t("shopping.tableQty")}</th>
+              <th className="text-right p-3">{t("shopping.tableTotal")}</th>
+              <th className="text-right p-3">{t("shopping.tablePaid")}</th>
+              <th className="text-left p-3">{t("shopping.tableWho")}</th>
+              <th className="p-3 w-20"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {listItems.map((item) => (
+              <ShoppingItemRow key={item.id} {...itemProps(item)} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6 max-w-4xl mx-auto">
       <PageHeader
-        title="Lista spesa"
-        description={`${boughtCount}/${items.length} comprati · Totale ${formatEuro(total)}`}
+        title={t("shopping.title")}
+        description={t("shopping.description", { bought: boughtCount, total: items.length, amount: formatEuro(total) })}
         icon={Flame}
-        badge="Spesa"
+        badge={t("shopping.badge")}
       />
 
-      <button
-        type="button"
-        onClick={() => setScannerOpen(true)}
-        className="w-full animate-fade-up group relative overflow-hidden rounded-2xl border border-ember/30 bg-gradient-to-br from-ember/20 via-ember/10 to-transparent p-5 text-left transition-all hover:border-ember/50 active:scale-[0.99]"
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-ember/20 flex items-center justify-center shrink-0">
-            <ScanBarcode className="w-6 h-6 text-ember" />
+      {items.length > 0 && (
+        <Card gradient className="animate-fade-up p-4 sm:p-5 space-y-4">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <StatCard label={t("shopping.alreadyPaid")} value={formatEuro(paid)} accent />
+            <StatCard label={t("shopping.toPay")} value={formatEuro(remaining)} />
+            <StatCard label={t("shopping.listTotal")} value={formatEuro(total)} />
           </div>
           <div>
-            <p className="font-[family-name:var(--font-fraunces)] text-lg text-cream">Scansiona barcode</p>
-            <p className="text-xs text-cream/50 mt-0.5">Nome e foto da Open Food Facts</p>
+            <div className="flex justify-between text-xs text-cream/50 mb-1.5">
+              <span>{t("shopping.purchaseProgress")}</span>
+              <span className="text-ember font-medium">{progressPct}%</span>
+            </div>
+            <div className="progress-track h-2.5">
+              <div className="progress-fill transition-all duration-500" style={{ width: `${progressPct}%` }} />
+            </div>
           </div>
-        </div>
-      </button>
-
-      {items.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3 animate-fade-up">
-          <StatCard label="Già pagato" value={formatEuro(paid)} accent />
-          <StatCard label="Da pagare" value={formatEuro(remaining)} />
-          <StatCard label="Totale lista" value={formatEuro(total)} />
-        </div>
+        </Card>
       )}
 
-      {items.length > 0 && (
-        <div className="animate-fade-up">
-          <div className="flex justify-between text-xs text-cream/50 mb-1.5">
-            <span>Progresso acquisti</span>
-            <span className="text-ember font-medium">{Math.round((boughtCount / items.length) * 100)}%</span>
-          </div>
-          <div className="progress-track h-2">
-            <div className="progress-fill" style={{ width: `${(boughtCount / items.length) * 100}%` }} />
-          </div>
-        </div>
-      )}
-
-      <Card gradient className="animate-fade-up animate-fade-up-delay-1 p-0 overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setManualOpen((o) => !o)}
-          className="w-full flex items-center justify-between px-4 py-3 text-sm text-cream/60 hover:text-cream/80"
-        >
-          <span>Aggiungi manualmente</span>
-          <ChevronDown className={`w-4 h-4 transition-transform ${manualOpen ? "rotate-180" : ""}`} />
-        </button>
-        {manualOpen && (
-          <form onSubmit={handleAdd} className="px-4 pb-4 grid sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end border-t border-glass-border/50 pt-4">
-            <div className="sm:col-span-2">
-              <Label>Prodotto</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Acqua, carne..." required />
-            </div>
-            <div>
-              <Label>Tipo</Label>
-              <Input value={foodType} onChange={(e) => setFoodType(e.target.value)} placeholder="Pasta..." />
-            </div>
-            <div>
-              <Label>Categoria</Label>
-              <Select value={category} onChange={(e) => setCategory(e.target.value as ShoppingCategory)}>
-                {categories.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </Select>
-            </div>
-            <div>
-              <Label>Qtà × € cad.</Label>
-              <div className="flex gap-1">
-                <Input type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} className="w-14" />
-                <Input type="number" step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} placeholder="€" className="flex-1" />
-              </div>
-              {manualTotal != null && (
-                <p className="text-[10px] text-ember mt-0.5">Totale {formatEuro(manualTotal)}</p>
-              )}
-            </div>
-            <Button type="submit" className="w-full sm:w-auto sm:mt-6"><Plus className="w-4 h-4" /> Aggiungi</Button>
-          </form>
-        )}
-      </Card>
+      <ShoppingPlanPanel
+        name={name}
+        category={category}
+        quantity={quantity}
+        foodType={foodType}
+        onNameChange={setName}
+        onCategoryChange={setCategory}
+        onQuantityChange={setQuantity}
+        onFoodTypeChange={setFoodType}
+        onAddSingle={handleAdd}
+        onPasteAdd={handlePasteAdd}
+      />
 
       {items.length === 0 ? (
-        <Card gradient className="animate-fade-up animate-fade-up-delay-2">
-          <div className="text-center py-12 text-cream/50 space-y-2">
-            <ScanBarcode className="w-10 h-10 mx-auto text-cream/20" />
-            <p>Lista vuota</p>
-            <p className="text-xs">Scansiona un prodotto e conferma prima di aggiungerlo</p>
+        <Card gradient className="animate-fade-up animate-fade-up-delay-1 border-dashed border-glass-border">
+          <div className="text-center py-10 sm:py-12 text-cream/50 space-y-2 px-4">
+            <ShoppingBag className="w-10 h-10 mx-auto text-cream/15" />
+            <p className="font-[family-name:var(--font-fraunces)] text-cream/70">{t("shopping.emptyTitle")}</p>
+            <p className="text-xs max-w-sm mx-auto leading-relaxed">{t("shopping.emptyHint")}</p>
           </div>
         </Card>
       ) : (
-        <>
-          <div className="md:hidden space-y-3 animate-fade-up animate-fade-up-delay-2">
-            {items.map((item) => (
-              <ShoppingItemCard
-                key={item.id}
-                item={item}
-                members={members}
-                editing={editingId === item.id}
-                edit={edit ?? itemToEditState(item)}
-                onEdit={() => startEdit(item)}
-                onCancel={() => { setEditingId(null); setEdit(null); }}
-                onSave={() => saveEdit(item)}
-                onDelete={() => deleteItem(item.id)}
-                onToggleBought={() => toggleBought(item)}
-                onAssign={(uid) => assignItem(item.id, uid)}
-                onEditChange={(patch) => setEdit((prev) => ({ ...(prev ?? itemToEditState(item)), ...patch }))}
-              />
-            ))}
-          </div>
+        <div className="space-y-6">
+          {toBuy.length > 0 && (
+            <section className="space-y-3 animate-fade-up animate-fade-up-delay-1">
+              <SectionHeader title={t("shopping.sectionToBuy")} count={toBuy.length} variant="pending" />
+              <div className="md:hidden space-y-3">
+                {toBuy.map((item) => (
+                  <ShoppingItemCard key={item.id} {...itemProps(item)} />
+                ))}
+              </div>
+              {listTable(toBuy)}
+            </section>
+          )}
 
-          <Card gradient className="hidden md:block p-0 overflow-hidden animate-fade-up animate-fade-up-delay-2">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-night/40 text-cream/50 border-b border-glass-border">
-                    <th className="p-3 w-8"></th>
-                    <th className="text-left p-3">Prodotto</th>
-                    <th className="text-left p-3">Tipo</th>
-                    <th className="text-center p-3">Qtà</th>
-                    <th className="text-right p-3">Totale</th>
-                    <th className="text-right p-3">Pagato</th>
-                    <th className="text-left p-3">Chi</th>
-                    <th className="p-3 w-16"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <ShoppingItemRow
-                      key={item.id}
-                      item={item}
-                      members={members}
-                      editing={editingId === item.id}
-                      edit={edit ?? itemToEditState(item)}
-                      onEdit={() => startEdit(item)}
-                      onCancel={() => { setEditingId(null); setEdit(null); }}
-                      onSave={() => saveEdit(item)}
-                      onDelete={() => deleteItem(item.id)}
-                      onToggleBought={() => toggleBought(item)}
-                      onAssign={(uid) => assignItem(item.id, uid)}
-                      onEditChange={(patch) => setEdit((prev) => ({ ...(prev ?? itemToEditState(item)), ...patch }))}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </>
+          {bought.length > 0 && (
+            <section className="space-y-3 animate-fade-up animate-fade-up-delay-2">
+              <SectionHeader title={t("shopping.sectionBought")} count={bought.length} variant="done" />
+              <div className="md:hidden space-y-3">
+                {bought.map((item) => (
+                  <ShoppingItemCard key={item.id} {...itemProps(item)} />
+                ))}
+              </div>
+              {listTable(bought)}
+            </section>
+          )}
+        </div>
       )}
+
+      <button
+        type="button"
+        onClick={() => startScan()}
+        className="w-full group rounded-2xl border border-dashed border-glass-border/80 bg-night/20 hover:bg-night/40 hover:border-cream/20 px-4 py-3.5 flex items-center justify-center gap-3 text-sm text-cream/45 hover:text-cream/65 transition-all"
+      >
+        <span className="w-9 h-9 rounded-xl bg-white/5 group-hover:bg-white/8 flex items-center justify-center transition-colors">
+          <ScanBarcode className="w-4 h-4" />
+        </span>
+        <span className="text-left">
+          <span className="block text-cream/70 group-hover:text-cream/85">{t("shopping.scanUnplanned")}</span>
+          <span className="block text-[11px] text-cream/35 mt-0.5">{t("shopping.scanUnplannedHint")}</span>
+        </span>
+      </button>
 
       <BarcodeScanner
         open={scannerOpen}
-        onClose={() => setScannerOpen(false)}
+        onClose={() => { setScannerOpen(false); if (!pendingProduct) setScanTarget(null); }}
         onDetected={handleDetected}
       />
 
       {pendingProduct && (
         <ScannedProductConfirm
-          key={pendingProduct.barcode}
+          key={`${pendingProduct.barcode}-${scanTarget?.id ?? "unplanned"}`}
           product={pendingProduct}
+          plannedItem={scanTarget}
           existing={pendingExisting}
-          onConfirm={confirmScannedProduct}
+          onConfirm={handleScanConfirm}
           onScanAgain={() => { setPendingProduct(null); setScannerOpen(true); }}
-          onCancel={() => setPendingProduct(null)}
+          onCancel={() => { setPendingProduct(null); setScanTarget(null); }}
         />
       )}
     </div>

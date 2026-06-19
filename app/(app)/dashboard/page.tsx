@@ -11,6 +11,7 @@ import {
   getUrgentItems,
 } from "@/lib/finance";
 import { getNextTimelineEntry } from "@/lib/dates";
+import { getLocale } from "@/lib/i18n/server";
 import type {
   Trip,
   ShoppingItem,
@@ -26,6 +27,7 @@ export default async function DashboardPage() {
   if (!tripData) redirect("/onboarding");
 
   const { trip, members } = tripData;
+  const locale = await getLocale();
   const supabase = await createClient();
 
   const [
@@ -46,7 +48,7 @@ export default async function DashboardPage() {
       .eq("trip_id", trip.id)
       .eq("entry_type", "timeline")
       .order("sort_order"),
-    fetchWeather(trip.lat, trip.lng),
+    fetchWeather(trip.lat, trip.lng, locale),
   ]);
 
   const tripFull = trip as Trip;
@@ -69,7 +71,8 @@ export default async function DashboardPage() {
         equipmentProgress={calcEquipmentProgress((equipment ?? []) as Equipment[])}
         urgentItems={getUrgentItems(
           (equipment ?? []) as Equipment[],
-          (shopping ?? []) as ShoppingItem[]
+          (shopping ?? []) as ShoppingItem[],
+          locale
         )}
         nextTimeline={getNextTimelineEntry((timeline ?? []) as ScheduleEntry[])}
       />

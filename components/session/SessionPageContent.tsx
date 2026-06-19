@@ -2,106 +2,123 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogIn, LogOut, Users, Copy, Check } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
-import {
-  joinTripByCode,
-  leaveTripSession,
-  previewTripByInviteCode,
-} from "@/lib/trip-session";
+import { LogIn, LogOut, Users, Copy, Check, Trash2 } from "lucide-react";
+import { useSessionManager } from "@/components/session/SessionManagerProvider";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { Card, CardTitle, CardDescription } from "@/components/ui/Card";
-import type { Trip, TripMember } from "@/lib/types";
+import { SessionMembersList } from "@/components/session/SessionMembersList";
+import { SessionCreatedTripsList } from "@/components/session/SessionCreatedTripsList";
+import { useTranslations } from "@/lib/i18n/client";
+import type { CreatedTripSummary } from "@/lib/session-manager";
 
-export function SessionPageContent({
-  trip,
-  members,
-  userId,
-}: {
-  trip: Trip | null;
-  members: TripMember[];
-  userId: string;
-}) {
+export function SessionPageContent() {
   const router = useRouter();
+  const { t } = useTranslations();
+  const {
+    trip,
+    members,
+    userId,
+    currentMember,
+    actionLoading,
+    error,
+    inviteUrl,
+    previewInviteCode,
+    joinByCode,
+    leaveSession,
+    deleteSession,
+    deleteTripById,
+    createdTrips,
+    createdTripsLoading,
+    clearError,
+  } = useSessionManager();
+
   const [inviteCode, setInviteCode] = useState("");
   const [previewName, setPreviewName] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [leaving, setLeaving] = useState(false);
-  const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const currentMember = members.find((m) => m.user_id === userId);
-  const joinUrl = trip
-    ? `${typeof window !== "undefined" ? window.location.origin : ""}/join/${trip.invite_code}`
-    : "";
-
   async function handlePreview() {
-    setError("");
+    clearError();
     setPreviewName(null);
-
-    const supabase = createClient();
-    const { trip: preview, error: previewError } = await previewTripByInviteCode(
-      supabase,
-      inviteCode
-    );
-
-    if (previewError || !preview) {
-      setError(previewError ?? "Codice invito non trovato");
-      return;
-    }
-
-    setPreviewName(preview.name);
+    const preview = await previewInviteCode(inviteCode);
+    if (preview) setPreviewName(preview.name);
   }
 
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
-    setError("");
-
-    const supabase = createClient();
-    const result = await joinTripByCode(supabase, inviteCode);
-
-    if (!result.ok) {
-      setError(result.error);
-      setLoading(false);
-      return;
-    }
-
-    router.push("/dashboard");
-    router.refresh();
+    const ok = await joinByCode(inviteCode);
+    if (ok) router.push("/dashboard");
   }
 
   async function handleLeave() {
     if (
       !confirm(
         trip
-          ? `Vuoi uscire da "${trip.name}"? Potrai rientrare con il codice invito.`
-          : "Vuoi uscire dalla sessione?"
+          ? t("session.confirmLeaveWithTrip", { name: trip.name })
+          : t("session.confirmLeave")
       )
     ) {
       return;
     }
 
-    setLeaving(true);
-    setError("");
+    const ok = await leaveSession();
+    if (ok) router.push("/onboarding");
+  }
 
-    const supabase = createClient();
-    const result = await leaveTripSession(supabase);
+  async function handleDelete() {
+    if (!trip) return;
 
-    if (!result.ok) {
-      setError(result.error);
-      setLeaving(false);
+    const confirmed = confirm(t("session.confirmDeleteSession", { name: trip.name }));
+    if (!confirmed) return;
+
+    const typed = prompt(t("session.confirmTypeNameToConfirm", { name: trip.name }));
+    if (typed?.trim() !== trip.name) {
+      if (typed !== null) alert(t("session.confirmNameMismatch"));
       return;
     }
 
-    router.push("/onboarding");
-    router.refresh();
+    const ok = await deleteSession();
+    if (ok) router.push("/onboarding");
+  }
+
+  async function handleJoinFromHistory(inviteCode: string) {
+    if (
+      trip &&
+      !confirm(t("session.confirmSwitchSession", { name: trip.name }))
+    ) {
+      return;
+    }
+
+    const ok = await joinByCode(inviteCode);
+    if (ok) router.push("/dashboard");
+  }
+
+  async function handleDeleteFromHistory(entry: CreatedTripSummary) {
+    const confirmed = confirm(
+      entry.member_count === 0
+        ? t("session.confirmDeleteEmpty", { name: entry.name })
+        : t("session.confirmDeleteWithMembers", { name: entry.name })
+    );
+    if (!confirmed) return;
+
+    if (entry.member_count > 0) {
+      const typed = prompt(t("session.confirmTypeNameToConfirm", { name: entry.name }));
+      if (typed?.trim() !== entry.name) {
+        if (typed !== null) alert(t("session.confirmNameMismatch"));
+        return;
+      }
+    }
+
+    const ok = entry.is_active
+      ? await deleteSession()
+      : await deleteTripById(entry.id);
+
+    if (ok && entry.is_active) router.push("/onboarding");
   }
 
   function copyInvite() {
-    if (!joinUrl) return;
-    navigator.clipboard.writeText(joinUrl);
+    if (!inviteUrl) return;
+    navigator.clipboard.writeText(inviteUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -109,23 +126,30 @@ export function SessionPageContent({
   return (
     <div className="space-y-4 max-w-lg">
       <div>
-        <h2 className="font-[family-name:var(--font-fraunces)] text-2xl text-cream">
-          Sessione
-        </h2>
-        <p className="text-sm text-cream/50 mt-1">
-          Entra o esci da un campeggio con il codice invito
+        <p className="text-xs uppercase tracking-widest text-ember/70 font-medium mb-1">
+          {t("session.managerTitle")}
         </p>
+        <h2 className="font-[family-name:var(--font-fraunces)] text-2xl text-cream">
+          {t("session.yourSession")}
+        </h2>
+        <p className="text-sm text-cream/50 mt-1">{t("session.description")}</p>
       </div>
 
       {trip && currentMember && (
         <Card glow gradient>
           <CardTitle className="flex items-center gap-2">
             <Users className="w-5 h-5 text-ember" />
-            Sessione attiva
+            {t("session.activeSession")}
           </CardTitle>
           <CardDescription className="mb-4">
-            Sei in <strong className="text-cream">{trip.name}</strong> come{" "}
-            {currentMember.role === "owner" ? "organizzatore" : "membro"}
+            {t("common.activeSessionPrefix")}{" "}
+            <strong className="text-cream">{trip.name}</strong>{" "}
+            {t("common.activeSessionSuffix", {
+              role:
+                currentMember.role === "owner"
+                  ? t("session.roleOrganizer")
+                  : t("session.roleMember"),
+            })}
           </CardDescription>
 
           <div className="flex items-center gap-2 mb-4">
@@ -137,51 +161,68 @@ export function SessionPageContent({
               variant="secondary"
               size="sm"
               onClick={copyInvite}
-              title="Copia link invito"
+              title={t("nav.copyInviteLink")}
             >
               {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
             </Button>
           </div>
 
-          <p className="text-xs text-cream/40 mb-4">
-            {members.length} {members.length === 1 ? "persona" : "persone"} nel gruppo
-          </p>
+          <div className="mb-4">
+            <p className="text-xs text-cream/50 mb-2 font-medium">
+              {members.length === 1
+                ? t("session.personInGroup", { count: members.length })
+                : t("session.peopleInGroup", { count: members.length })}
+            </p>
+            <SessionMembersList members={members} currentUserId={userId} />
+          </div>
 
           <Button
             type="button"
-            variant="danger"
+            variant="secondary"
             className="w-full"
             onClick={handleLeave}
-            disabled={leaving}
+            disabled={actionLoading}
           >
             <LogOut className="w-4 h-4" />
-            {leaving ? "Uscita..." : "Esci dalla sessione"}
+            {actionLoading ? t("common.leaving") : t("session.leaveSession")}
           </Button>
+
+          {currentMember.role === "owner" && (
+            <Button
+              type="button"
+              variant="danger"
+              className="w-full mt-2"
+              onClick={handleDelete}
+              disabled={actionLoading}
+            >
+              <Trash2 className="w-4 h-4" />
+              {actionLoading ? t("common.deleting") : t("session.deleteSession")}
+            </Button>
+          )}
         </Card>
       )}
 
       <Card glow gradient>
         <CardTitle className="flex items-center gap-2">
           <LogIn className="w-5 h-5 text-ember" />
-          {trip ? "Cambia sessione" : "Entra in una sessione"}
+          {trip ? t("session.switchSession") : t("session.joinSession")}
         </CardTitle>
         <CardDescription className="mb-4">
-          {trip
-            ? "Inserisci il codice di un altro campeggio per passare al nuovo gruppo"
-            : "Inserisci il codice che ti ha mandato un amico"}
+          {trip ? t("session.switchDescription") : t("session.joinDescription")}
         </CardDescription>
 
         <form onSubmit={handleJoin} className="space-y-4">
           <div>
-            <Label>Codice sessione</Label>
+            <Label>{t("session.sessionCode")}</Label>
             <Input
               value={inviteCode}
               onChange={(e) => {
                 setInviteCode(e.target.value.toUpperCase());
                 setPreviewName(null);
+                clearError();
               }}
               onBlur={handlePreview}
-              placeholder="GRAVIO"
+              placeholder={t("auth.sessionCodePlaceholder")}
               className="uppercase tracking-widest text-center text-lg"
               required
             />
@@ -189,7 +230,7 @@ export function SessionPageContent({
 
           {previewName && (
             <p className="text-sm text-ember/90 bg-ember/10 border border-ember/20 rounded-lg px-3 py-2 text-center">
-              Ti unirai a <strong>{previewName}</strong>
+              {t("common.previewJoinPrefix")} <strong>{previewName}</strong>
             </p>
           )}
 
@@ -199,11 +240,23 @@ export function SessionPageContent({
             </p>
           )}
 
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Accesso..." : trip ? "Passa a questa sessione" : "Entra nella sessione"}
+          <Button type="submit" className="w-full" disabled={actionLoading}>
+            {actionLoading
+              ? t("common.loggingIn")
+              : trip
+                ? t("session.switchToSession")
+                : t("session.enterSession")}
           </Button>
         </form>
       </Card>
+
+      <SessionCreatedTripsList
+        trips={createdTrips}
+        loading={createdTripsLoading}
+        actionLoading={actionLoading}
+        onJoin={handleJoinFromHistory}
+        onDelete={handleDeleteFromHistory}
+      />
     </div>
   );
 }

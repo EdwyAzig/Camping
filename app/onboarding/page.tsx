@@ -3,89 +3,43 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Tent, Users, Plus } from "lucide-react";
+import { CamplyLogo } from "@/components/ui/CamplyLogo";
 import { createClient } from "@/lib/supabase/client";
-import { generateInviteCode } from "@/lib/utils";
-import { seedTripDefaults } from "@/lib/seed";
+import { createSessionManager } from "@/lib/session-manager";
+import { useTranslations } from "@/lib/i18n/client";
+import { localizeError } from "@/lib/i18n/errors";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
-import { joinTripByCode } from "@/lib/trip-session";
-import { mapSupabaseError } from "@/lib/supabase/errors";
 import { Card, CardTitle, CardDescription } from "@/components/ui/Card";
-import { DEFAULT_CAMPING_LOCATION } from "@/lib/default-location";
 
 export default function OnboardingPage() {
+  const { locale, t } = useTranslations();
   const router = useRouter();
   const [mode, setMode] = useState<"choose" | "create" | "join">("choose");
   const [inviteCode, setInviteCode] = useState("");
-  const [tripName, setTripName] = useState("Campeggio Parco del Gravio");
-  const [locationName, setLocationName] = useState<string>(DEFAULT_CAMPING_LOCATION.name);
+  const [tripName, setTripName] = useState(() => t("common.defaultTripName"));
+  const [locationName, setLocationName] = useState(() => t("defaults.locationName"));
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  async function getDisplayName() {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    return (
-      user?.user_metadata?.display_name ||
-      user?.email?.split("@")[0] ||
-      "Campeggiatore"
-    );
-  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-
-    const code = generateInviteCode();
-    const { data: trip, error: tripError } = await supabase
-      .from("trips")
-      .insert({
-        name: tripName,
-        location_name: locationName,
-        lat: DEFAULT_CAMPING_LOCATION.lat,
-        lng: DEFAULT_CAMPING_LOCATION.lng,
-        departure_date: "Domenica dopo le 18:00",
-        return_note: "Lunedì dopo pranzo",
-        address: DEFAULT_CAMPING_LOCATION.address,
-        invite_code: code,
-        created_by: user.id,
-      })
-      .select()
-      .single();
-
-    if (tripError || !trip) {
-      setError(
-        tripError
-          ? mapSupabaseError(tripError.message, tripError.code)
-          : "Errore nella creazione"
-      );
-      setLoading(false);
-      return;
-    }
-
-    const displayName = await getDisplayName();
-    const { error: memberError } = await supabase.from("trip_members").insert({
-      trip_id: trip.id,
-      user_id: user.id,
-      display_name: displayName,
-      role: "owner",
+    const manager = createSessionManager(createClient());
+    const result = await manager.createTrip({
+      name: tripName,
+      locationName,
+      locale,
     });
 
-    if (memberError) {
-      setError(memberError.message);
+    if (!result.ok) {
+      setError(localizeError(t, result.error));
       setLoading(false);
       return;
     }
 
-    await seedTripDefaults(trip.id, supabase);
     router.push("/dashboard");
     router.refresh();
   }
@@ -95,21 +49,11 @@ export default function OnboardingPage() {
     setLoading(true);
     setError("");
 
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-
-    const result = await joinTripByCode(
-      supabase,
-      inviteCode,
-      await getDisplayName()
-    );
+    const manager = createSessionManager(createClient());
+    const result = await manager.joinByCode(inviteCode, undefined, locale);
 
     if (!result.ok) {
-      setError(result.error);
+      setError(localizeError(t, result.error));
       setLoading(false);
       return;
     }
@@ -123,13 +67,11 @@ export default function OnboardingPage() {
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="w-full max-w-md space-y-4 animate-fade-up">
           <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-ember/25 to-ember/5 border border-ember/30 mb-5 campfire-icon ember-glow">
-              <Tent className="w-9 h-9 text-ember" />
-            </div>
-            <h1 className="font-[family-name:var(--font-fraunces)] text-3xl text-shimmer">
-              Benvenuto!
+            <CamplyLogo className="mx-auto h-14 sm:h-16 w-auto mb-4" priority />
+            <h1 className="font-[family-name:var(--font-fraunces)] text-2xl sm:text-3xl text-shimmer">
+              {t("common.welcome")}
             </h1>
-            <p className="text-cream/55 mt-2">Crea o unisciti a un campeggio</p>
+            <p className="text-cream/55 mt-2">{t("auth.onboardingSubtitle")}</p>
           </div>
 
           <Card
@@ -143,10 +85,8 @@ export default function OnboardingPage() {
                 <Plus className="w-6 h-6 text-ember" />
               </div>
               <div>
-                <CardTitle>Crea campeggio</CardTitle>
-                <CardDescription>
-                  Imposta luogo e invita gli altri 3 con un codice
-                </CardDescription>
+                <CardTitle>{t("auth.createTitle")}</CardTitle>
+                <CardDescription>{t("auth.createDescription")}</CardDescription>
               </div>
             </div>
           </Card>
@@ -162,10 +102,8 @@ export default function OnboardingPage() {
                 <Users className="w-6 h-6 text-cream" />
               </div>
               <div>
-                <CardTitle>Unisciti</CardTitle>
-                <CardDescription>
-                  Hai un codice sessione? Entra nel gruppo
-                </CardDescription>
+                <CardTitle>{t("auth.joinTitle")}</CardTitle>
+                <CardDescription>{t("auth.joinDescription")}</CardDescription>
               </div>
             </div>
           </Card>
@@ -180,13 +118,13 @@ export default function OnboardingPage() {
         <Card glow gradient>
           {mode === "create" ? (
             <>
-              <CardTitle>Nuovo campeggio</CardTitle>
+              <CardTitle>{t("auth.newTripTitle")}</CardTitle>
               <CardDescription className="mb-6">
-                Precompilato con Parco del Gravio, Condove — modifica se serve
+                {t("auth.newTripDescription")}
               </CardDescription>
               <form onSubmit={handleCreate} className="space-y-4">
                 <div>
-                  <Label>Nome campeggio</Label>
+                  <Label>{t("auth.tripNameLabel")}</Label>
                   <Input
                     value={tripName}
                     onChange={(e) => setTripName(e.target.value)}
@@ -194,7 +132,7 @@ export default function OnboardingPage() {
                   />
                 </div>
                 <div>
-                  <Label>Luogo</Label>
+                  <Label>{t("auth.locationLabel")}</Label>
                   <Input
                     value={locationName}
                     onChange={(e) => setLocationName(e.target.value)}
@@ -210,27 +148,27 @@ export default function OnboardingPage() {
                     variant="ghost"
                     onClick={() => setMode("choose")}
                   >
-                    Indietro
+                    {t("common.back")}
                   </Button>
                   <Button type="submit" className="flex-1" disabled={loading}>
-                    {loading ? "Creazione..." : "Crea e inizia"}
+                    {loading ? t("common.creation") : t("auth.createSubmit")}
                   </Button>
                 </div>
               </form>
             </>
           ) : (
             <>
-              <CardTitle>Unisciti al gruppo</CardTitle>
+              <CardTitle>{t("auth.joinGroupTitle")}</CardTitle>
               <CardDescription className="mb-6">
-                Inserisci il codice sessione che ti ha mandato un amico
+                {t("auth.joinGroupDescription")}
               </CardDescription>
               <form onSubmit={handleJoin} className="space-y-4">
                 <div>
-                  <Label>Codice sessione</Label>
+                  <Label>{t("auth.sessionCodeLabel")}</Label>
                   <Input
                     value={inviteCode}
                     onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-                    placeholder="GRAVIO"
+                    placeholder={t("auth.sessionCodePlaceholder")}
                     className="uppercase tracking-widest text-center text-lg"
                     required
                   />
@@ -244,10 +182,10 @@ export default function OnboardingPage() {
                     variant="ghost"
                     onClick={() => setMode("choose")}
                   >
-                    Indietro
+                    {t("common.back")}
                   </Button>
                   <Button type="submit" className="flex-1" disabled={loading}>
-                    {loading ? "Unione..." : "Unisciti"}
+                    {loading ? t("common.joining") : t("auth.joinSubmit")}
                   </Button>
                 </div>
               </form>
