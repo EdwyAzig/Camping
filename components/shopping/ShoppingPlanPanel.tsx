@@ -8,9 +8,10 @@ import { Card, CardDescription, CardTitle } from "@/components/ui/Card";
 import { parseShoppingListText } from "@/lib/shopping-list-parser";
 import { useTranslations } from "@/lib/i18n/client";
 import { getShoppingCategoryLabel, getShoppingCategoryOptions } from "@/lib/i18n/enums";
+import { getGroupOptions } from "@/lib/shopping-groups";
 import { cn } from "@/lib/utils";
 import type { ParsedListItem } from "@/lib/shopping-list-parser";
-import type { ShoppingCategory } from "@/lib/types";
+import type { ShoppingCategory, ShoppingGroup } from "@/lib/types";
 
 type PlanTab = "single" | "paste";
 
@@ -19,10 +20,13 @@ export function ShoppingPlanPanel({
   category,
   quantity,
   foodType,
+  groupId,
+  groups,
   onNameChange,
   onCategoryChange,
   onQuantityChange,
   onFoodTypeChange,
+  onGroupIdChange,
   onAddSingle,
   onPasteAdd,
 }: {
@@ -30,15 +34,19 @@ export function ShoppingPlanPanel({
   category: ShoppingCategory;
   quantity: string;
   foodType: string;
+  groupId: string;
+  groups: ShoppingGroup[];
   onNameChange: (v: string) => void;
   onCategoryChange: (v: ShoppingCategory) => void;
   onQuantityChange: (v: string) => void;
   onFoodTypeChange: (v: string) => void;
+  onGroupIdChange: (v: string) => void;
   onAddSingle: (e: React.FormEvent) => void;
   onPasteAdd: (items: ParsedListItem[]) => Promise<void>;
 }) {
   const { t } = useTranslations();
   const categories = getShoppingCategoryOptions(t);
+  const groupOptions = getGroupOptions(groups, t);
   const [tab, setTab] = useState<PlanTab>("single");
   const [pasteText, setPasteText] = useState("");
   const [parsed, setParsed] = useState<ParsedListItem[] | null>(null);
@@ -106,6 +114,14 @@ export function ShoppingPlanPanel({
                   required
                   className="text-base"
                 />
+              </div>
+              <div>
+                <Label>{t("shopping.groupLabel")}</Label>
+                <Select value={groupId} onChange={(e) => onGroupIdChange(e.target.value)}>
+                  {groupOptions.map((g) => (
+                    <option key={g.value || "general"} value={g.value}>{g.label}</option>
+                  ))}
+                </Select>
               </div>
               <div>
                 <Label>{t("common.type")}</Label>

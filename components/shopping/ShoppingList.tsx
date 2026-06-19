@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { Fragment, useCallback, useState } from "react";
 import { Flame, ScanBarcode, ShoppingBag, CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimeTable } from "@/lib/hooks/useRealtimeTable";
@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/Progress";
 import { BarcodeScanner } from "@/components/shopping/BarcodeScanner";
 import { ScannedProductConfirm } from "@/components/shopping/ScannedProductConfirm";
+import { ShoppingGroupsPanel } from "@/components/shopping/ShoppingGroupsPanel";
 import { ShoppingItemCard } from "@/components/shopping/ShoppingItemCard";
 import { ShoppingPlanPanel } from "@/components/shopping/ShoppingPlanPanel";
 import {
@@ -19,20 +20,31 @@ import {
 import { calcShoppingPaid, calcShoppingRemaining } from "@/lib/finance";
 import type { OffProduct } from "@/lib/open-food-facts";
 import { calcLineTotal, parseQuantityCount } from "@/lib/shopping-utils";
+import { groupItemsByShoppingGroup } from "@/lib/shopping-groups";
 import { useTranslations, useFormatEuro } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import type { ParsedListItem } from "@/lib/shopping-list-parser";
-import type { ShoppingItem, ShoppingCategory, TripMember } from "@/lib/types";
+import type { ShoppingItem, ShoppingCategory, ShoppingGroup, TripMember, Trip } from "@/lib/types";
 
 type ScanConfirmData = {
   name: string;
   category: ShoppingCategory;
   foodType: string;
+  groupId: string;
   quantity: string;
   unitPrice: string;
   packSize: string;
   incrementExisting: boolean;
 };
+
+function GroupHeader({ label, count }: { label: string; count: number }) {
+  return (
+    <div className="flex items-center gap-2 px-1 pt-1">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-cream/55">{label}</h3>
+      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-white/5 text-cream/35">{count}</span>
+    </div>
+  );
+}
 
 function SectionHeader({
   title,
@@ -60,32 +72,57 @@ function SectionHeader({
   );
 }
 
-export function ShoppingList({ tripId, members, initialItems }: {
-  tripId: string;
+export function ShoppingList({
+  trip,
+  members,
+  initialItems,
+  initialGroups,
+}: {
+  trip: Trip;
   members: TripMember[];
   initialItems: ShoppingItem[];
+  initialGroups: ShoppingGroup[];
 }) {
+  const tripId = trip.id;
   const { t } = useTranslations();
   const formatEuro = useFormatEuro();
 
   const [items, setItems] = useState(initialItems);
+  const [groups, setGroups] = useState(initialGroups);
   const [name, setName] = useState("");
   const [category, setCategory] = useState<ShoppingCategory>("cibo");
   const [quantity, setQuantity] = useState("1");
   const [foodType, setFoodType] = useState("");
+  const [groupId, setGroupId] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanTarget, setScanTarget] = useState<ShoppingItem | null>(null);
   const [pendingProduct, setPendingProduct] = useState<OffProduct | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [edit, setEdit] = useState<ItemEditState | null>(null);
 
-  const load = useCallback(async () => {
+  const loadItems = useCallback(async () => {
     const supabase = createClient();
     const { data } = await supabase.from("shopping_items").select("*").eq("trip_id", tripId).order("created_at");
     if (data) setItems(data as ShoppingItem[]);
   }, [tripId]);
 
-  useRealtimeTable("shopping_items", tripId, load);
+  const loadGroups = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("shopping_groups")
+      .select("*")
+      .eq("trip_id", tripId)
+      .order("sort_order")
+      .order("created_at");
+    if (data) setGroups(data as ShoppingGroup[]);
+  }, [tripId]);
+
+  const load = useCallback(async () => {
+    await Promise.all([loadItems(), loadGroups()]);
+  }, [loadItems, loadGroups]);
+
+  useRealtimeTable("shopping_items", tripId, loadItems);
+  useRealtimeTable("shopping_groups", tripId, loadGroups);
 
   function startScan(item?: ShoppingItem) {
     setScanTarget(item ?? null);
@@ -109,6 +146,7 @@ export function ShoppingList({ tripId, members, initialItems }: {
       estimated_price: lineTotal,
       actual_price: lineTotal,
       food_type: data.foodType.trim() || product.foodType || null,
+      group_id: data.groupId || null,
       brand: product.brand,
       barcode: product.barcode,
       image_url: product.imageUrl,
@@ -129,7 +167,7 @@ export function ShoppingList({ tripId, members, initialItems }: {
     await supabase.from("shopping_items").update(payload).eq("id", scanTarget.id);
     setPendingProduct(null);
     setScanTarget(null);
-    await load();
+    await loadItems();
   }
 
   async function confirmUnplannedPurchase(data: ScanConfirmData) {
@@ -159,7 +197,7 @@ export function ShoppingList({ tripId, members, initialItems }: {
 
     setPendingProduct(null);
     setScanTarget(null);
-    await load();
+    await loadItems();
   }
 
   async function handleScanConfirm(data: ScanConfirmData) {
@@ -183,14 +221,16 @@ export function ShoppingList({ tripId, members, initialItems }: {
       unit_price: null,
       estimated_price: null,
       food_type: foodType.trim() || null,
+      group_id: groupId || null,
       source: "manual",
       bought: false,
     });
     setName("");
     setQuantity("1");
     setFoodType("");
+    setGroupId("");
     setCategory("cibo");
-    load();
+    loadItems();
   }
 
   async function handlePasteAdd(parsed: ParsedListItem[]) {
@@ -205,11 +245,12 @@ export function ShoppingList({ tripId, members, initialItems }: {
         unit_price: null,
         estimated_price: null,
         food_type: null,
+        group_id: null,
         source: "manual" as const,
         bought: false,
       }))
     );
-    await load();
+    await loadItems();
   }
 
   async function toggleBought(item: ShoppingItem) {
@@ -221,7 +262,7 @@ export function ShoppingList({ tripId, members, initialItems }: {
     } else {
       await supabase.from("shopping_items").update({ bought: becomingBought }).eq("id", item.id);
     }
-    load();
+    loadItems();
   }
 
   function startEdit(item: ShoppingItem) {
@@ -238,6 +279,7 @@ export function ShoppingList({ tripId, members, initialItems }: {
     await supabase.from("shopping_items").update({
       name: edit.name.trim() || item.name,
       food_type: edit.food_type.trim() || null,
+      group_id: edit.group_id || null,
       category: edit.category,
       quantity: String(qty),
       unit_price: unit,
@@ -246,20 +288,20 @@ export function ShoppingList({ tripId, members, initialItems }: {
     }).eq("id", item.id);
     setEditingId(null);
     setEdit(null);
-    load();
+    loadItems();
   }
 
   async function deleteItem(id: string) {
     const supabase = createClient();
     await supabase.from("shopping_items").delete().eq("id", id);
     if (editingId === id) { setEditingId(null); setEdit(null); }
-    load();
+    loadItems();
   }
 
   async function assignItem(itemId: string, userId: string) {
     const supabase = createClient();
     await supabase.from("shopping_items").update({ assigned_to: userId || null }).eq("id", itemId);
-    load();
+    loadItems();
   }
 
   const total = items.reduce((s, i) => {
@@ -280,6 +322,7 @@ export function ShoppingList({ tripId, members, initialItems }: {
   const itemProps = (item: ShoppingItem) => ({
     item,
     members,
+    groups,
     editing: editingId === item.id,
     edit: edit ?? itemToEditState(item),
     onEdit: () => startEdit(item),
@@ -293,30 +336,58 @@ export function ShoppingList({ tripId, members, initialItems }: {
     onScan: !item.bought ? () => startScan(item) : undefined,
   });
 
-  const listTable = (listItems: ShoppingItem[]) => (
-    <Card gradient className="hidden md:block p-0 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-night/40 text-cream/50 border-b border-glass-border">
-              <th className="p-3 w-8"></th>
-              <th className="text-left p-3">{t("shopping.tableProduct")}</th>
-              <th className="text-left p-3">{t("shopping.tableType")}</th>
-              <th className="text-center p-3">{t("shopping.tableQty")}</th>
-              <th className="text-right p-3">{t("shopping.tableTotal")}</th>
-              <th className="text-right p-3">{t("shopping.tablePaid")}</th>
-              <th className="text-left p-3">{t("shopping.tableWho")}</th>
-              <th className="p-3 w-20"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {listItems.map((item) => (
-              <ShoppingItemRow key={item.id} {...itemProps(item)} />
+  const listTable = (listItems: ShoppingItem[]) => {
+    const sections = groupItemsByShoppingGroup(listItems, groups, t);
+    return (
+      <Card gradient className="hidden md:block p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-night/40 text-cream/50 border-b border-glass-border">
+                <th className="p-3 w-8"></th>
+                <th className="text-left p-3">{t("shopping.tableProduct")}</th>
+                <th className="text-left p-3">{t("shopping.tableType")}</th>
+                <th className="text-center p-3">{t("shopping.tableQty")}</th>
+                <th className="text-right p-3">{t("shopping.tableTotal")}</th>
+                <th className="text-right p-3">{t("shopping.tablePaid")}</th>
+                <th className="text-left p-3">{t("shopping.tableWho")}</th>
+                <th className="p-3 w-20"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sections.map(({ key, label, items: groupItems }) => (
+                <Fragment key={key ?? "general"}>
+                  <tr className="bg-night/30 border-b border-glass-border/40">
+                    <td colSpan={8} className="px-3 py-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-cream/55">{label}</span>
+                      <span className="ml-2 text-[10px] text-cream/35">{groupItems.length}</span>
+                    </td>
+                  </tr>
+                  {groupItems.map((item) => (
+                    <ShoppingItemRow key={item.id} {...itemProps(item)} />
+                  ))}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    );
+  };
+
+  const mobileList = (listItems: ShoppingItem[]) => (
+    <div className="md:hidden space-y-4">
+      {groupItemsByShoppingGroup(listItems, groups, t).map(({ key, label, items: groupItems }) => (
+        <div key={key ?? "general"} className="space-y-2">
+          <GroupHeader label={label} count={groupItems.length} />
+          <div className="space-y-3">
+            {groupItems.map((item) => (
+              <ShoppingItemCard key={item.id} {...itemProps(item)} />
             ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 
   return (
@@ -347,15 +418,20 @@ export function ShoppingList({ tripId, members, initialItems }: {
         </Card>
       )}
 
+      <ShoppingGroupsPanel tripId={tripId} groups={groups} onChange={loadGroups} />
+
       <ShoppingPlanPanel
         name={name}
         category={category}
         quantity={quantity}
         foodType={foodType}
+        groupId={groupId}
+        groups={groups}
         onNameChange={setName}
         onCategoryChange={setCategory}
         onQuantityChange={setQuantity}
         onFoodTypeChange={setFoodType}
+        onGroupIdChange={setGroupId}
         onAddSingle={handleAdd}
         onPasteAdd={handlePasteAdd}
       />
@@ -373,11 +449,7 @@ export function ShoppingList({ tripId, members, initialItems }: {
           {toBuy.length > 0 && (
             <section className="space-y-3 animate-fade-up animate-fade-up-delay-1">
               <SectionHeader title={t("shopping.sectionToBuy")} count={toBuy.length} variant="pending" />
-              <div className="md:hidden space-y-3">
-                {toBuy.map((item) => (
-                  <ShoppingItemCard key={item.id} {...itemProps(item)} />
-                ))}
-              </div>
+              {mobileList(toBuy)}
               {listTable(toBuy)}
             </section>
           )}
@@ -385,11 +457,7 @@ export function ShoppingList({ tripId, members, initialItems }: {
           {bought.length > 0 && (
             <section className="space-y-3 animate-fade-up animate-fade-up-delay-2">
               <SectionHeader title={t("shopping.sectionBought")} count={bought.length} variant="done" />
-              <div className="md:hidden space-y-3">
-                {bought.map((item) => (
-                  <ShoppingItemCard key={item.id} {...itemProps(item)} />
-                ))}
-              </div>
+              {mobileList(bought)}
               {listTable(bought)}
             </section>
           )}
@@ -422,6 +490,7 @@ export function ShoppingList({ tripId, members, initialItems }: {
           product={pendingProduct}
           plannedItem={scanTarget}
           existing={pendingExisting}
+          groups={groups}
           onConfirm={handleScanConfirm}
           onScanAgain={() => { setPendingProduct(null); setScannerOpen(true); }}
           onCancel={() => { setPendingProduct(null); setScanTarget(null); }}

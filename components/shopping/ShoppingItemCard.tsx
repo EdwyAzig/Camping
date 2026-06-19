@@ -6,14 +6,16 @@ import { ItemActions } from "@/components/ui/ItemActions";
 import { Input, Select } from "@/components/ui/Input";
 import { type ItemEditState } from "@/components/shopping/ShoppingItemRow";
 import { calcLineTotal, deriveUnitPrice, parseQuantityCount } from "@/lib/shopping-utils";
+import { getGroupLabel, getGroupOptions } from "@/lib/shopping-groups";
 import { cn } from "@/lib/utils";
 import { useTranslations, useFormatEuro } from "@/lib/i18n/client";
 import { getShoppingCategoryLabel, getShoppingCategoryOptions } from "@/lib/i18n/enums";
-import type { ShoppingItem, ShoppingCategory, TripMember } from "@/lib/types";
+import type { ShoppingItem, ShoppingCategory, ShoppingGroup, TripMember } from "@/lib/types";
 
 export function ShoppingItemCard({
   item,
   members,
+  groups,
   editing,
   edit,
   onToggleBought,
@@ -27,6 +29,7 @@ export function ShoppingItemCard({
 }: {
   item: ShoppingItem;
   members: TripMember[];
+  groups: ShoppingGroup[];
   editing: boolean;
   edit: ItemEditState;
   onToggleBought: () => void;
@@ -41,6 +44,7 @@ export function ShoppingItemCard({
   const { t } = useTranslations();
   const formatEuro = useFormatEuro();
   const categories = getShoppingCategoryOptions(t);
+  const groupOptions = getGroupOptions(groups, t);
 
   if (editing) {
     const editQty = parseQuantityCount(edit.quantity);
@@ -56,6 +60,14 @@ export function ShoppingItemCard({
           className="text-base"
         />
         <div className="grid grid-cols-2 gap-2">
+          <Select
+            value={edit.group_id}
+            onChange={(e) => onEditChange({ group_id: e.target.value })}
+          >
+            {groupOptions.map((g) => (
+              <option key={g.value || "general"} value={g.value}>{g.label}</option>
+            ))}
+          </Select>
           <Input
             value={edit.food_type}
             onChange={(e) => onEditChange({ food_type: e.target.value })}
@@ -150,6 +162,11 @@ export function ShoppingItemCard({
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-cream/45">
                 {getShoppingCategoryLabel(item.category, t)}
               </span>
+              {item.group_id && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-ember/10 text-ember/80">
+                  {getGroupLabel(item.group_id, groups, t)}
+                </span>
+              )}
             </div>
             <p className={cn("font-medium leading-snug text-cream", item.bought && "line-through text-cream/55")}>
               {item.name}

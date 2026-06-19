@@ -10,7 +10,9 @@ import { calcLineTotal, parseQuantityCount } from "@/lib/shopping-utils";
 import { cn } from "@/lib/utils";
 import { useTranslations, useFormatEuro } from "@/lib/i18n/client";
 import { getShoppingCategoryOptions } from "@/lib/i18n/enums";
-import type { ShoppingCategory, ShoppingItem } from "@/lib/types";
+import { getGroupOptions } from "@/lib/shopping-groups";
+import type { ShoppingCategory, ShoppingGroup, ShoppingItem } from "@/lib/types";
+import { Select } from "@/components/ui/Input";
 
 function QtyStepper({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const n = parseQuantityCount(value);
@@ -45,6 +47,7 @@ export function ScannedProductConfirm({
   product,
   plannedItem,
   existing,
+  groups,
   onConfirm,
   onScanAgain,
   onCancel,
@@ -52,10 +55,12 @@ export function ScannedProductConfirm({
   product: OffProduct;
   plannedItem?: ShoppingItem | null;
   existing?: ShoppingItem | null;
+  groups: ShoppingGroup[];
   onConfirm: (data: {
     name: string;
     category: ShoppingCategory;
     foodType: string;
+    groupId: string;
     quantity: string;
     unitPrice: string;
     packSize: string;
@@ -67,11 +72,13 @@ export function ScannedProductConfirm({
   const { t } = useTranslations();
   const formatEuro = useFormatEuro();
   const categories = getShoppingCategoryOptions(t);
+  const groupOptions = getGroupOptions(groups, t);
   const isPurchase = !!plannedItem;
 
   const [name, setName] = useState(product.name);
   const [category, setCategory] = useState(plannedItem?.category ?? product.category);
   const [foodType, setFoodType] = useState(plannedItem?.food_type ?? product.foodType ?? "");
+  const [groupId, setGroupId] = useState(plannedItem?.group_id ?? "");
   const [quantity, setQuantity] = useState(
     plannedItem ? String(parseQuantityCount(plannedItem.quantity)) : "1"
   );
@@ -83,6 +90,7 @@ export function ScannedProductConfirm({
     setName(product.name || plannedItem?.name || "");
     setCategory(plannedItem?.category ?? product.category);
     setFoodType(plannedItem?.food_type ?? product.foodType ?? "");
+    setGroupId(plannedItem?.group_id ?? "");
     setQuantity(plannedItem ? String(parseQuantityCount(plannedItem.quantity)) : "1");
     setUnitPrice("");
     setPackSize(product.packSize ?? "");
@@ -202,6 +210,15 @@ export function ScannedProductConfirm({
             </div>
 
             <div>
+              <Label>{t("shopping.groupLabel")}</Label>
+              <Select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+                {groupOptions.map((g) => (
+                  <option key={g.value || "general"} value={g.value}>{g.label}</option>
+                ))}
+              </Select>
+            </div>
+
+            <div>
               <Label>{t("shopping.typeOptional")}</Label>
               <Input value={foodType} onChange={(e) => setFoodType(e.target.value)} placeholder={t("shopping.confirmTypePlaceholder")} />
             </div>
@@ -256,6 +273,7 @@ export function ScannedProductConfirm({
               name: name.trim() || product.name || plannedItem?.name || "",
               category,
               foodType,
+              groupId,
               quantity,
               unitPrice,
               packSize: packSizeFromOff ? (product.packSize ?? "") : packSize.trim(),

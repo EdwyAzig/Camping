@@ -15,6 +15,7 @@ import {
   createSessionManager,
   type CreateTripInput,
   type CreatedTripSummary,
+  type MembershipSummary,
   type SessionSnapshot,
   type TripSessionPreview,
 } from "@/lib/session-manager";
@@ -22,11 +23,15 @@ import type { Trip, TripMember } from "@/lib/types";
 import { useTranslations } from "@/lib/i18n/client";
 import { localizeError } from "@/lib/i18n/errors";
 import { useRealtimeTable } from "@/lib/hooks/useRealtimeTable";
+import { clearActiveTrip } from "@/app/actions/active-trip";
+import { clearActiveTripIdClient } from "@/lib/active-trip-cookie";
+import { activateTrip as activateTripClient } from "@/lib/activate-trip";
 
 type SessionManagerContextValue = {
   trip: Trip | null;
   members: TripMember[];
   userId: string;
+  memberships: MembershipSummary[];
   currentMember: TripMember | null;
   isInSession: boolean;
   loading: boolean;
@@ -35,13 +40,16 @@ type SessionManagerContextValue = {
   inviteUrl: string | null;
   previewInviteCode: (code: string) => Promise<TripSessionPreview | null>;
   joinByCode: (code: string, displayName?: string) => Promise<boolean>;
-  leaveSession: () => Promise<boolean>;
-  deleteSession: () => Promise<boolean>;
+  switchTrip: (tripId: string) => Promise<boolean>;
+  leaveSession: (tripId?: string) => Promise<boolean>;
+  deleteSession: (tripId?: string) => Promise<boolean>;
   deleteTripById: (tripId: string) => Promise<boolean>;
   createTrip: (input: CreateTripInput) => Promise<boolean>;
   createdTrips: CreatedTripSummary[];
   createdTripsLoading: boolean;
+  membershipsLoading: boolean;
   refreshCreatedTrips: () => Promise<void>;
+  refreshMemberships: () => Promise<void>;
   refresh: () => Promise<void>;
   clearError: () => void;
 };
@@ -64,24 +72,34 @@ export function SessionManagerProvider({
   const [error, setError] = useState<string | null>(null);
   const [createdTrips, setCreatedTrips] = useState<CreatedTripSummary[]>([]);
   const [createdTripsLoading, setCreatedTripsLoading] = useState(true);
+  const [memberships, setMemberships] = useState<MembershipSummary[]>([]);
+  const [membershipsLoading, setMembershipsLoading] = useState(true);
 
   const manager = useMemo(() => createSessionManager(createClient()), []);
 
+  const refreshMemberships = useCallback(async () => {
+    setMembershipsLoading(true);
+    const { trips, error: listError } = await manager.listMemberships();
+    setMemberships(trips);
+    if (listError) setError(localize(listError));
+    setMembershipsLoading(false);
+  }, [manager, localize]);
+
   const refreshCreatedTrips = useCallback(async () => {
     setCreatedTripsLoading(true);
-    const { trips, error: listError } = await manager.listCreatedTrips();
+    const { trips, error: listError } = await manager.listCreatedTrips(snapshot.trip?.id);
     setCreatedTrips(trips);
     if (listError) setError(localize(listError));
     setCreatedTripsLoading(false);
-  }, [manager]);
+  }, [manager, snapshot.trip?.id, localize]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     const next = await manager.load();
     if (next) setSnapshot(next);
-    await refreshCreatedTrips();
+    await Promise.all([refreshCreatedTrips(), refreshMemberships()]);
     setLoading(false);
-  }, [manager, refreshCreatedTrips]);
+  }, [manager, refreshCreatedTrips, refreshMemberships]);
 
   useRealtimeTable(
     "trip_members",
@@ -96,6 +114,10 @@ export function SessionManagerProvider({
   }, [initial]);
 
   useEffect(() => {
+    void refreshMemberships();
+  }, [refreshMemberships]);
+
+  useEffect(() => {
     void refreshCreatedTrips();
   }, [refreshCreatedTrips]);
 
@@ -105,6 +127,10 @@ export function SessionManagerProvider({
   );
 
   const inviteUrl = snapshot.trip ? manager.getInviteUrl(snapshot.trip) : null;
+
+  const activateTrip = useCallback(async (tripId: string) => {
+    await activateTripClient(tripId);
+  }, []);
 
   const previewInviteCode = useCallback(
     async (code: string) => {
@@ -117,6 +143,20 @@ export function SessionManagerProvider({
       return trip;
     },
     [manager, localize]
+  );
+
+  const switchTrip = useCallback(
+    async (tripId: string) => {
+      setActionLoading(true);
+      setError(null);
+
+      await activateTrip(tripId);
+      router.refresh();
+      await refreshMemberships();
+      setActionLoading(false);
+      return true;
+    },
+    [activateTrip, router, refreshMemberships]
   );
 
   const joinByCode = useCallback(
@@ -132,51 +172,80 @@ export function SessionManagerProvider({
         return false;
       }
 
+      await activateTrip(result.tripId);
       await refresh();
       router.refresh();
       setActionLoading(false);
       return true;
     },
-    [manager, refresh, router, localize, locale]
+    [manager, refresh, router, localize, locale, activateTrip]
   );
 
-  const leaveSession = useCallback(async () => {
-    setActionLoading(true);
-    setError(null);
+  const leaveSession = useCallback(
+    async (tripId?: string) => {
+      const targetTripId = tripId ?? snapshot.trip?.id;
+      if (!targetTripId) return false;
 
-    const result = await manager.leave();
+      setActionLoading(true);
+      setError(null);
 
-    if (!result.ok) {
-      setError(localize(result.error));
+      const result = await manager.leave(targetTripId);
+
+      if (!result.ok) {
+        setError(localize(result.error));
+        setActionLoading(false);
+        return false;
+      }
+
+      const remaining = memberships.filter((m) => m.id !== targetTripId);
+      if (remaining.length > 0) {
+        await activateTrip(remaining[0].id);
+      } else {
+        await clearActiveTrip();
+        clearActiveTripIdClient();
+        setSnapshot((prev) => ({ ...prev, trip: null, members: [] }));
+      }
+
+      await refresh();
+      router.refresh();
       setActionLoading(false);
-      return false;
-    }
+      return true;
+    },
+    [manager, snapshot.trip?.id, memberships, refresh, router, localize, activateTrip]
+  );
 
-    setSnapshot((prev) => ({ ...prev, trip: null, members: [] }));
-    await refreshCreatedTrips();
-    router.refresh();
-    setActionLoading(false);
-    return true;
-  }, [manager, refreshCreatedTrips, router, localize]);
+  const deleteSession = useCallback(
+    async (tripId?: string) => {
+      const targetTripId = tripId ?? snapshot.trip?.id;
+      if (!targetTripId) return false;
 
-  const deleteSession = useCallback(async () => {
-    setActionLoading(true);
-    setError(null);
+      setActionLoading(true);
+      setError(null);
 
-    const result = await manager.deleteSession();
+      const result = await manager.deleteSession(targetTripId);
 
-    if (!result.ok) {
-      setError(localize(result.error));
+      if (!result.ok) {
+        setError(localize(result.error));
+        setActionLoading(false);
+        return false;
+      }
+
+      const remaining = memberships.filter((m) => m.id !== targetTripId);
+      if (remaining.length > 0) {
+        await activateTrip(remaining[0].id);
+      } else {
+        await clearActiveTrip();
+        clearActiveTripIdClient();
+        setSnapshot((prev) => ({ ...prev, trip: null, members: [] }));
+      }
+
+      await refresh();
+      router.refresh();
       setActionLoading(false);
-      return false;
-    }
-
-    setSnapshot((prev) => ({ ...prev, trip: null, members: [] }));
-    await refreshCreatedTrips();
-    router.refresh();
-    setActionLoading(false);
-    return true;
-  }, [manager, refreshCreatedTrips, router, localize]);
+      return true;
+    },
+    [manager, snapshot.trip?.id, memberships, refresh, router, localize, activateTrip]
+  );
 
   const deleteTripById = useCallback(
     async (tripId: string) => {
@@ -192,15 +261,22 @@ export function SessionManagerProvider({
       }
 
       if (snapshot.trip?.id === tripId) {
-        setSnapshot((prev) => ({ ...prev, trip: null, members: [] }));
+        const remaining = memberships.filter((m) => m.id !== tripId);
+        if (remaining.length > 0) {
+          await activateTrip(remaining[0].id);
+        } else {
+          await clearActiveTrip();
+          clearActiveTripIdClient();
+          setSnapshot((prev) => ({ ...prev, trip: null, members: [] }));
+        }
       }
 
-      await refreshCreatedTrips();
+      await refresh();
       router.refresh();
       setActionLoading(false);
       return true;
     },
-    [manager, refreshCreatedTrips, router, snapshot.trip?.id, localize]
+    [manager, refresh, router, snapshot.trip?.id, memberships, localize, activateTrip]
   );
 
   const createTrip = useCallback(
@@ -216,12 +292,13 @@ export function SessionManagerProvider({
         return false;
       }
 
+      await activateTrip(result.tripId);
       await refresh();
       router.refresh();
       setActionLoading(false);
       return true;
     },
-    [manager, refresh, router, localize]
+    [manager, refresh, router, localize, activateTrip]
   );
 
   const value = useMemo<SessionManagerContextValue>(
@@ -229,6 +306,7 @@ export function SessionManagerProvider({
       trip: snapshot.trip,
       members: snapshot.members,
       userId: snapshot.userId,
+      memberships,
       currentMember,
       isInSession: snapshot.trip !== null && currentMember !== null,
       loading,
@@ -237,18 +315,22 @@ export function SessionManagerProvider({
       inviteUrl,
       previewInviteCode,
       joinByCode,
+      switchTrip,
       leaveSession,
       deleteSession,
       deleteTripById,
       createTrip,
       createdTrips,
       createdTripsLoading,
+      membershipsLoading,
       refreshCreatedTrips,
+      refreshMemberships,
       refresh,
       clearError: () => setError(null),
     }),
     [
       snapshot,
+      memberships,
       currentMember,
       loading,
       actionLoading,
@@ -256,13 +338,16 @@ export function SessionManagerProvider({
       inviteUrl,
       previewInviteCode,
       joinByCode,
+      switchTrip,
       leaveSession,
       deleteSession,
       deleteTripById,
       createTrip,
       createdTrips,
       createdTripsLoading,
+      membershipsLoading,
       refreshCreatedTrips,
+      refreshMemberships,
       refresh,
     ]
   );

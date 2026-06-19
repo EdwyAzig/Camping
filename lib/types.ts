@@ -68,7 +68,16 @@ export interface ShoppingItem {
   brand: string | null;
   image_url: string | null;
   food_type: string | null;
+  group_id: string | null;
   source: "manual" | "openfoodfacts";
+  created_at: string;
+}
+
+export interface ShoppingGroup {
+  id: string;
+  trip_id: string;
+  name: string;
+  sort_order: number;
   created_at: string;
 }
 

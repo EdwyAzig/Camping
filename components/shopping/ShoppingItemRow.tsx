@@ -8,12 +8,14 @@ import { calcLineTotal, deriveUnitPrice, parseQuantityCount } from "@/lib/shoppi
 import { cn } from "@/lib/utils";
 import { useTranslations, useFormatEuro } from "@/lib/i18n/client";
 import { getShoppingCategoryLabel, getShoppingCategoryOptions } from "@/lib/i18n/enums";
-import type { ShoppingItem, ShoppingCategory, TripMember } from "@/lib/types";
+import { getGroupLabel, getGroupOptions } from "@/lib/shopping-groups";
+import type { ShoppingItem, ShoppingCategory, ShoppingGroup, TripMember } from "@/lib/types";
 
 export interface ItemEditState {
   name: string;
   food_type: string;
   category: ShoppingCategory;
+  group_id: string;
   quantity: string;
   unit_price: string;
   actual_price: string;
@@ -25,6 +27,7 @@ export function itemToEditState(item: ShoppingItem): ItemEditState {
     name: item.name,
     food_type: item.food_type ?? "",
     category: item.category,
+    group_id: item.group_id ?? "",
     quantity: String(parseQuantityCount(item.quantity)),
     unit_price: unit != null ? String(unit) : "",
     actual_price: item.actual_price != null ? String(item.actual_price) : "",
@@ -44,6 +47,7 @@ export function ShoppingItemRow({
   onAssign,
   onEditChange,
   onScan,
+  groups,
 }: {
   item: ShoppingItem;
   members: TripMember[];
@@ -57,10 +61,12 @@ export function ShoppingItemRow({
   onAssign: (userId: string) => void;
   onEditChange: (patch: Partial<ItemEditState>) => void;
   onScan?: () => void;
+  groups: ShoppingGroup[];
 }) {
   const { t } = useTranslations();
   const formatEuro = useFormatEuro();
   const categories = getShoppingCategoryOptions(t);
+  const groupOptions = getGroupOptions(groups, t);
 
   if (editing) {
     const editQty = parseQuantityCount(edit.quantity);
@@ -83,6 +89,15 @@ export function ShoppingItemRow({
               placeholder={t("shopping.editFoodType")}
               className="text-sm"
             />
+            <Select
+              value={edit.group_id}
+              onChange={(e) => onEditChange({ group_id: e.target.value })}
+              className="text-sm"
+            >
+              {groupOptions.map((g) => (
+                <option key={g.value || "general"} value={g.value}>{g.label}</option>
+              ))}
+            </Select>
             <Select
               value={edit.category}
               onChange={(e) => onEditChange({ category: e.target.value as ShoppingCategory })}
@@ -159,6 +174,9 @@ export function ShoppingItemRow({
           <div className="min-w-0">
             <p className="font-medium leading-tight">{item.name}</p>
             {item.brand && <p className="text-xs text-cream/40">{item.brand}</p>}
+            {item.group_id && (
+              <p className="text-[10px] text-ember/70">{getGroupLabel(item.group_id, groups, t)}</p>
+            )}
             {item.pack_size && <p className="text-[10px] text-cream/35">{item.pack_size}</p>}
           </div>
         </div>

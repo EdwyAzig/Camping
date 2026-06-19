@@ -3,6 +3,7 @@
 import { Settings } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { LanguageSettings } from "@/components/settings/LanguageSettings";
+import { InstallAppSettings } from "@/components/settings/InstallAppSettings";
 import { useTranslations } from "@/lib/i18n/client";
 
 interface SettingsPageContentProps {
@@ -22,6 +23,7 @@ export function SettingsPageContent({ tripLat, tripLng }: SettingsPageContentPro
         badge={t("settings.badge")}
       />
       <LanguageSettings tripLat={tripLat} tripLng={tripLng} />
+      <InstallAppSettings />
     </div>
   );
 }

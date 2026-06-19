@@ -10,6 +10,7 @@ import { useTranslations } from "@/lib/i18n/client";
 import { localizeError } from "@/lib/i18n/errors";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
+import { activateTrip } from "@/lib/activate-trip";
 import { Card, CardTitle, CardDescription } from "@/components/ui/Card";
 
 export default function OnboardingPage() {
@@ -40,6 +41,7 @@ export default function OnboardingPage() {
       return;
     }
 
+    await activateTrip(result.tripId);
     router.push("/dashboard");
     router.refresh();
   }
@@ -58,13 +60,14 @@ export default function OnboardingPage() {
       return;
     }
 
+    await activateTrip(result.tripId);
     router.push("/dashboard");
     router.refresh();
   }
 
   if (mode === "choose") {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="min-h-screen min-h-dvh flex items-center justify-center px-safe pt-safe pb-safe p-4">
         <div className="w-full max-w-md space-y-4 animate-fade-up">
           <div className="text-center mb-6">
             <CamplyLogo className="mx-auto h-14 sm:h-16 w-auto mb-4" priority />
@@ -113,7 +116,7 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen min-h-dvh flex items-center justify-center px-safe pt-safe pb-safe p-4">
       <div className="w-full max-w-md animate-fade-up">
         <Card glow gradient>
           {mode === "create" ? (

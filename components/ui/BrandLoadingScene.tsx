@@ -1,15 +1,16 @@
 "use client";
 
+import { useEffect } from "react";
 import { useOptionalTranslations } from "@/lib/i18n/client";
 import { DEFAULT_LOCALE } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 import { createTranslator } from "@/lib/i18n/translate";
 import { generateFireflies } from "@/lib/ambient-seed";
 import { cn } from "@/lib/utils";
-import { AmbientBackground } from "@/components/ui/AmbientBackground";
+import { removeInstantSplash } from "@/lib/pwa";
 import { CamplyLogo } from "@/components/ui/CamplyLogo";
 
-const ORBIT_SPARKS = generateFireflies(28);
+const ORBIT_SPARKS = generateFireflies(14);
 
 const fallbackT = createTranslator(getMessages(DEFAULT_LOCALE));
 
@@ -19,9 +20,24 @@ type BrandLoadingSceneProps = {
   label?: string;
 };
 
+function BrandLoadingBackdrop() {
+  return (
+    <>
+      <div className="ambient-sky-gradient" />
+      <div className="stars stars-layer-1" />
+      <div className="stars stars-layer-2" />
+      <div className="ambient-vignette" />
+    </>
+  );
+}
+
 export function BrandLoadingScene({ exiting = false, className, label }: BrandLoadingSceneProps) {
   const ctx = useOptionalTranslations();
   const loadingLabel = label ?? ctx?.t("common.loading") ?? fallbackT("common.loading");
+
+  useEffect(() => {
+    removeInstantSplash();
+  }, []);
 
   return (
     <div
@@ -35,7 +51,7 @@ export function BrandLoadingScene({ exiting = false, className, label }: BrandLo
       role="status"
     >
       <div className="brand-loading-ambient">
-        <AmbientBackground contained />
+        <BrandLoadingBackdrop />
       </div>
 
       <div className="brand-loading-light" aria-hidden />
@@ -65,7 +81,11 @@ export function BrandLoadingScene({ exiting = false, className, label }: BrandLo
           <div className="brand-loading-ring brand-loading-ring-2" />
           <div className="brand-loading-ring brand-loading-ring-3" />
           <div className="brand-loading-flare" />
-          <CamplyLogo className="brand-loading-logo" priority />
+          <CamplyLogo
+            className="brand-loading-logo"
+            priority
+            sizes="(max-width: 640px) 82vw, 18rem"
+          />
         </div>
 
         <div className="brand-loading-progress">

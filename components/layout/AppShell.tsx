@@ -21,6 +21,7 @@ import { useEffect, useMemo, useState } from "react";
 import { NavMoreMenu } from "@/components/layout/NavMoreMenu";
 import { useSessionManager } from "@/components/session/SessionManagerProvider";
 import { useTranslations } from "@/lib/i18n/client";
+import { TripSwitcher } from "@/components/session/TripSwitcher";
 import type { Trip, TripMember } from "@/lib/types";
 
 const memberColors = [
@@ -62,6 +63,13 @@ export function AppShell({
     setMoreOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    document.documentElement.classList.add("has-mobile-nav");
+    return () => {
+      document.documentElement.classList.remove("has-mobile-nav");
+    };
+  }, []);
+
   async function handleLogout() {
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -93,13 +101,14 @@ export function AppShell({
                 <MapPin className="w-3 h-3 text-ember/70 shrink-0" />
                 {trip.location_name}
               </p>
+              <TripSwitcher />
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <Link
               href="/sessione"
               className={cn(
-                "flex items-center gap-1.5 text-xs p-2 sm:px-3 sm:py-1.5 rounded-lg border transition-all",
+                "touch-target touch-manipulation flex items-center justify-center gap-1.5 text-xs p-2 sm:px-3 sm:py-1.5 rounded-lg border transition-all",
                 sessionActive
                   ? "bg-ember/15 border-ember/30 text-ember"
                   : "bg-forest-light/40 border-glass-border text-cream/80 hover:border-ember/40 hover:bg-forest-light/60"
@@ -115,7 +124,7 @@ export function AppShell({
             </Link>
             <button
               onClick={copyInvite}
-              className="flex items-center gap-1.5 text-xs bg-forest-light/40 p-2 sm:px-3 sm:py-1.5 rounded-lg border border-glass-border hover:border-ember/40 hover:bg-forest-light/60 transition-all"
+              className="touch-target touch-manipulation flex items-center justify-center gap-1.5 text-xs bg-forest-light/40 p-2 sm:px-3 sm:py-1.5 rounded-lg border border-glass-border hover:border-ember/40 hover:bg-forest-light/60 transition-all"
               title={t("nav.copyInviteLink")}
             >
               {copied ? (
@@ -146,7 +155,7 @@ export function AppShell({
             </div>
             <button
               onClick={handleLogout}
-              className="p-2 text-cream/40 hover:text-cream rounded-lg hover:bg-white/5 transition-colors"
+              className="touch-target touch-manipulation p-2 text-cream/40 hover:text-cream rounded-lg hover:bg-white/5 transition-colors"
               title={t("nav.logout")}
             >
               <LogOut className="w-4 h-4" />
@@ -193,7 +202,7 @@ export function AppShell({
                 key={href}
                 href={href}
                 className={cn(
-                  "flex flex-col items-center gap-0.5 px-1.5 py-1.5 rounded-xl flex-1 min-w-0 max-w-[4.5rem] transition-all",
+                  "touch-manipulation flex flex-col items-center gap-0.5 px-1.5 py-1.5 rounded-xl flex-1 min-w-0 max-w-[4.5rem] min-h-[3.25rem] transition-all",
                   active ? "text-ember" : "text-cream/45 hover:text-cream/70"
                 )}
               >

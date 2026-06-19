@@ -140,7 +140,7 @@ export function SessionCreatedTripsList({
                     onClick={() => onJoin(trip.invite_code)}
                   >
                     <LogIn className="w-3.5 h-3.5" />
-                    {t("session.rejoin")}
+                    {trip.is_member ? t("session.switchToGroup") : t("session.rejoin")}
                   </Button>
                 )}
                 {trip.can_delete && (

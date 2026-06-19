@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
 import {
   MoreHorizontal,
   Navigation,
@@ -31,6 +33,11 @@ export function NavMoreMenu({ open, onOpen, onClose, variant }: NavMoreMenuProps
   const pathname = usePathname();
   const { t } = useTranslations();
   const active = isMoreNavActive(pathname);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const moreNav = [
     { href: "/luogo", label: t("nav.location"), icon: Navigation, desc: t("nav.locationDesc") },
@@ -47,7 +54,7 @@ export function NavMoreMenu({ open, onOpen, onClose, variant }: NavMoreMenuProps
           type="button"
           onClick={onOpen}
           className={cn(
-            "flex flex-col items-center gap-0.5 px-1.5 py-1.5 rounded-xl flex-1 min-w-0 max-w-[4.5rem] transition-all",
+            "touch-manipulation flex flex-col items-center gap-0.5 px-1.5 py-1.5 rounded-xl flex-1 min-w-0 max-w-[4.5rem] min-h-[3.25rem] transition-all",
             active || open ? "text-ember" : "text-cream/45"
           )}
         >
@@ -62,47 +69,50 @@ export function NavMoreMenu({ open, onOpen, onClose, variant }: NavMoreMenuProps
           <span className="text-[9px] font-medium truncate w-full text-center">{t("nav.more")}</span>
         </button>
 
-        {open && (
-          <div className="fixed inset-0 z-[60] md:hidden">
-            <button
-              type="button"
-              className="absolute inset-0 bg-night/70 backdrop-blur-sm"
-              onClick={onClose}
-              aria-label={t("nav.closeMenu")}
-            />
-            <div className="absolute bottom-0 inset-x-0 rounded-t-2xl border-t border-glass-border bg-night/95 backdrop-blur-xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] animate-fade-up">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm font-medium text-cream/70">{t("nav.moreSections")}</p>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="p-2 rounded-lg text-cream/40 hover:text-cream hover:bg-white/5"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {moreNav.map(({ href, label, icon: Icon, desc }) => (
-                  <Link
-                    key={href}
-                    href={href}
+        {mounted &&
+          open &&
+          createPortal(
+            <div className="fixed inset-0 z-[60] md:hidden">
+              <button
+                type="button"
+                className="absolute inset-0 bg-night/70 backdrop-blur-sm"
+                onClick={onClose}
+                aria-label={t("nav.closeMenu")}
+              />
+              <div className="absolute bottom-0 inset-x-0 rounded-t-2xl border-t border-glass-border bg-night/95 backdrop-blur-xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] animate-fade-up">
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-sm font-medium text-cream/70">{t("nav.moreSections")}</p>
+                  <button
+                    type="button"
                     onClick={onClose}
-                    className={cn(
-                      "flex flex-col gap-1 p-3 rounded-xl border transition-colors",
-                      pathname === href
-                        ? "bg-ember/15 border-ember/30 text-ember"
-                        : "border-glass-border text-cream/80 hover:border-ember/25 hover:bg-white/5"
-                    )}
+                    className="p-2 rounded-lg text-cream/40 hover:text-cream hover:bg-white/5"
                   >
-                    <Icon className="w-5 h-5" />
-                    <span className="font-medium text-sm">{label}</span>
-                    <span className="text-[10px] text-cream/40">{desc}</span>
-                  </Link>
-                ))}
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {moreNav.map(({ href, label, icon: Icon, desc }) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      onClick={onClose}
+                      className={cn(
+                        "flex flex-col gap-1 p-3 rounded-xl border transition-colors",
+                        pathname === href
+                          ? "bg-ember/15 border-ember/30 text-ember"
+                          : "border-glass-border text-cream/80 hover:border-ember/25 hover:bg-white/5"
+                      )}
+                    >
+                      <Icon className="w-5 h-5" />
+                      <span className="font-medium text-sm">{label}</span>
+                      <span className="text-[10px] text-cream/40">{desc}</span>
+                    </Link>
+                  ))}
+                </div>
               </div>
-            </div>
-          </div>
-        )}
+            </div>,
+            document.body
+          )}
       </>
     );
   }

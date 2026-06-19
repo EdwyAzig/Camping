@@ -59,7 +59,7 @@ function RegisterForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen min-h-dvh flex items-center justify-center px-safe pt-safe pb-safe p-4">
       <div className="w-full max-w-md animate-fade-up">
         <div className="text-center mb-8">
           <CamplyLogo className="mx-auto h-16 sm:h-20 w-auto mb-5" priority />

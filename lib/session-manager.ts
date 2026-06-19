@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Locale } from "@/lib/i18n/config";
+import { getActiveTripIdClient } from "@/lib/active-trip-cookie";
 import { getMessages } from "@/lib/i18n/messages";
 import { createTranslator } from "@/lib/i18n/translate";
 import { DEFAULT_CAMPING_LOCATION } from "@/lib/default-location";
@@ -52,35 +53,54 @@ export type CreatedTripSummary = {
   can_delete: boolean;
 };
 
+export type MembershipSummary = {
+  id: string;
+  name: string;
+  location_name: string;
+  invite_code: string;
+  role: "owner" | "member";
+  joined_at: string;
+  member_count: number;
+};
+
 export class SessionManager {
   constructor(private readonly supabase: SupabaseClient) {}
 
-  async load(): Promise<SessionSnapshot | null> {
-    const {
-      data: { user },
-    } = await this.supabase.auth.getUser();
-
-    if (!user) return null;
+  private async resolveActiveTripId(userId: string): Promise<string | null> {
+    const cookieTripId = getActiveTripIdClient();
+    if (cookieTripId) {
+      const { data } = await this.supabase
+        .from("trip_members")
+        .select("trip_id")
+        .eq("user_id", userId)
+        .eq("trip_id", cookieTripId)
+        .maybeSingle();
+      if (data) return cookieTripId;
+    }
 
     const { data: membership } = await this.supabase
       .from("trip_members")
       .select("trip_id")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
+      .order("joined_at", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (!membership) {
-      return { trip: null, members: [], userId: user.id };
-    }
+    return membership?.trip_id ?? null;
+  }
 
+  private async loadTripSnapshot(
+    userId: string,
+    tripId: string
+  ): Promise<SessionSnapshot> {
     const { data: trip } = await this.supabase
       .from("trips")
       .select("*")
-      .eq("id", membership.trip_id)
+      .eq("id", tripId)
       .single();
 
     if (!trip) {
-      return { trip: null, members: [], userId: user.id };
+      return { trip: null, members: [], userId };
     }
 
     const { data: members } = await this.supabase
@@ -92,8 +112,39 @@ export class SessionManager {
     return {
       trip: trip as Trip,
       members: (members ?? []) as TripMember[],
-      userId: user.id,
+      userId,
     };
+  }
+
+  async load(): Promise<SessionSnapshot | null> {
+    const {
+      data: { user },
+    } = await this.supabase.auth.getUser();
+
+    if (!user) return null;
+
+    const tripId = await this.resolveActiveTripId(user.id);
+    if (!tripId) {
+      return { trip: null, members: [], userId: user.id };
+    }
+
+    return this.loadTripSnapshot(user.id, tripId);
+  }
+
+  async listMemberships(): Promise<{
+    trips: MembershipSummary[];
+    error?: string;
+  }> {
+    const { data, error } = await this.supabase.rpc("list_my_memberships");
+
+    if (error) {
+      return {
+        trips: [],
+        error: mapSupabaseError(error.message, error.code),
+      };
+    }
+
+    return { trips: (data ?? []) as MembershipSummary[] };
   }
 
   async previewInviteCode(
@@ -110,12 +161,16 @@ export class SessionManager {
     return joinTripByCode(this.supabase, code, displayName, locale);
   }
 
-  async leave(): Promise<{ ok: true } | { ok: false; error: string }> {
-    return leaveTripSession(this.supabase);
+  async leave(tripId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    return leaveTripSession(this.supabase, tripId);
   }
 
-  async deleteSession(): Promise<{ ok: true } | { ok: false; error: string }> {
-    const { error } = await this.supabase.rpc("delete_trip_session");
+  async deleteSession(
+    tripId: string
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    const { error } = await this.supabase.rpc("delete_trip_session", {
+      p_trip_id: tripId,
+    });
 
     if (error) {
       const message = error.message.includes("organizzatore")
@@ -127,11 +182,15 @@ export class SessionManager {
     return { ok: true };
   }
 
-  async listCreatedTrips(): Promise<{
+  async listCreatedTrips(
+    activeTripId?: string | null
+  ): Promise<{
     trips: CreatedTripSummary[];
     error?: string;
   }> {
-    const { data, error } = await this.supabase.rpc("list_my_created_trips");
+    const { data, error } = await this.supabase.rpc("list_my_created_trips", {
+      p_active_trip_id: activeTripId ?? null,
+    });
 
     if (error) {
       return {

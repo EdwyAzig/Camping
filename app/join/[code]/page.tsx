@@ -9,6 +9,7 @@ import { useTranslations } from "@/lib/i18n/client";
 import { localizeError } from "@/lib/i18n/errors";
 import { Button } from "@/components/ui/Button";
 import { Card, CardTitle, CardDescription } from "@/components/ui/Card";
+import { activateTrip } from "@/lib/activate-trip";
 
 export default function JoinPage() {
   const { locale, t } = useTranslations();
@@ -65,20 +66,21 @@ export default function JoinPage() {
       return;
     }
 
+    await activateTrip(result.tripId);
     router.push("/dashboard");
     router.refresh();
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen min-h-dvh flex items-center justify-center px-safe pt-safe pb-safe">
         <p className="text-cream/50">{t("common.loadingInvite")}</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen min-h-dvh flex items-center justify-center px-safe pt-safe pb-safe p-4">
       <div className="w-full max-w-md">
         <Card className="text-center">
           <Tent className="w-12 h-12 text-ember mx-auto mb-4" />

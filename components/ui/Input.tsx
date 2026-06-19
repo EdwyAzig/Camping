@@ -6,7 +6,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     <input
       ref={ref}
       className={cn(
-        "w-full rounded-xl bg-night/50 border border-glass-border px-4 py-2.5 text-cream placeholder:text-cream/40 focus:outline-none focus:ring-2 focus:ring-ember/50 focus:border-ember/50 transition-all",
+        "w-full rounded-xl bg-night/50 border border-glass-border px-4 py-2.5 text-base sm:text-sm text-cream placeholder:text-cream/40 focus:outline-none focus:ring-2 focus:ring-ember/50 focus:border-ember/50 transition-all",
         className
       )}
       {...props}
@@ -23,7 +23,7 @@ export const Textarea = forwardRef<
   <textarea
     ref={ref}
     className={cn(
-      "w-full rounded-xl bg-night/50 border border-glass-border px-4 py-2.5 text-cream placeholder:text-cream/40 focus:outline-none focus:ring-2 focus:ring-ember/50 focus:border-ember/50 transition-all resize-y min-h-[80px]",
+      "w-full rounded-xl bg-night/50 border border-glass-border px-4 py-2.5 text-base sm:text-sm text-cream placeholder:text-cream/40 focus:outline-none focus:ring-2 focus:ring-ember/50 focus:border-ember/50 transition-all resize-y min-h-[80px]",
       className
     )}
     {...props}
@@ -40,7 +40,7 @@ export function Select({
   return (
     <select
       className={cn(
-        "w-full rounded-xl bg-night/50 border border-glass-border px-4 py-2.5 text-cream focus:outline-none focus:ring-2 focus:ring-ember/50",
+        "w-full rounded-xl bg-night/50 border border-glass-border px-4 py-2.5 text-base sm:text-sm text-cream focus:outline-none focus:ring-2 focus:ring-ember/50",
         className
       )}
       {...props}

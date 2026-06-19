@@ -83,9 +83,12 @@ export async function joinTripByCode(
 }
 
 export async function leaveTripSession(
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  tripId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { error } = await supabase.rpc("leave_trip_session");
+  const { error } = await supabase.rpc("leave_trip_by_id", {
+    p_trip_id: tripId,
+  });
 
   if (error) {
     return { ok: false, error: mapSupabaseError(error.message, error.code) };

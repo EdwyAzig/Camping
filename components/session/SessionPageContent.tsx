@@ -9,6 +9,7 @@ import { Input, Label } from "@/components/ui/Input";
 import { Card, CardTitle, CardDescription } from "@/components/ui/Card";
 import { SessionMembersList } from "@/components/session/SessionMembersList";
 import { SessionCreatedTripsList } from "@/components/session/SessionCreatedTripsList";
+import { SessionMyTripsList } from "@/components/session/SessionMyTripsList";
 import { useTranslations } from "@/lib/i18n/client";
 import type { CreatedTripSummary } from "@/lib/session-manager";
 
@@ -19,12 +20,15 @@ export function SessionPageContent() {
     trip,
     members,
     userId,
+    memberships,
+    membershipsLoading,
     currentMember,
     actionLoading,
     error,
     inviteUrl,
     previewInviteCode,
     joinByCode,
+    switchTrip,
     leaveSession,
     deleteSession,
     deleteTripById,
@@ -62,7 +66,7 @@ export function SessionPageContent() {
     }
 
     const ok = await leaveSession();
-    if (ok) router.push("/onboarding");
+    if (ok && memberships.length <= 1) router.push("/onboarding");
   }
 
   async function handleDelete() {
@@ -78,17 +82,15 @@ export function SessionPageContent() {
     }
 
     const ok = await deleteSession();
-    if (ok) router.push("/onboarding");
+    if (ok && memberships.length <= 1) router.push("/onboarding");
+  }
+
+  async function handleSwitch(tripId: string) {
+    const ok = await switchTrip(tripId);
+    if (ok) router.push("/dashboard");
   }
 
   async function handleJoinFromHistory(inviteCode: string) {
-    if (
-      trip &&
-      !confirm(t("session.confirmSwitchSession", { name: trip.name }))
-    ) {
-      return;
-    }
-
     const ok = await joinByCode(inviteCode);
     if (ok) router.push("/dashboard");
   }
@@ -110,10 +112,10 @@ export function SessionPageContent() {
     }
 
     const ok = entry.is_active
-      ? await deleteSession()
+      ? await deleteSession(entry.id)
       : await deleteTripById(entry.id);
 
-    if (ok && entry.is_active) router.push("/onboarding");
+    if (ok && entry.is_active && memberships.length <= 1) router.push("/onboarding");
   }
 
   function copyInvite() {
@@ -134,6 +136,14 @@ export function SessionPageContent() {
         </h2>
         <p className="text-sm text-cream/50 mt-1">{t("session.description")}</p>
       </div>
+
+      <SessionMyTripsList
+        trips={memberships}
+        activeTripId={trip?.id ?? null}
+        loading={membershipsLoading}
+        actionLoading={actionLoading}
+        onSwitch={handleSwitch}
+      />
 
       {trip && currentMember && (
         <Card glow gradient>
@@ -205,10 +215,12 @@ export function SessionPageContent() {
       <Card glow gradient>
         <CardTitle className="flex items-center gap-2">
           <LogIn className="w-5 h-5 text-ember" />
-          {trip ? t("session.switchSession") : t("session.joinSession")}
+          {memberships.length > 0 ? t("session.joinAnotherGroup") : t("session.joinSession")}
         </CardTitle>
         <CardDescription className="mb-4">
-          {trip ? t("session.switchDescription") : t("session.joinDescription")}
+          {memberships.length > 0
+            ? t("session.joinAnotherDescription")
+            : t("session.joinDescription")}
         </CardDescription>
 
         <form onSubmit={handleJoin} className="space-y-4">
@@ -241,11 +253,7 @@ export function SessionPageContent() {
           )}
 
           <Button type="submit" className="w-full" disabled={actionLoading}>
-            {actionLoading
-              ? t("common.loggingIn")
-              : trip
-                ? t("session.switchToSession")
-                : t("session.enterSession")}
+            {actionLoading ? t("common.loggingIn") : t("session.enterSession")}
           </Button>
         </form>
       </Card>
